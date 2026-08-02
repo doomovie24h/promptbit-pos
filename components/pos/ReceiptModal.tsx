@@ -1,5 +1,5 @@
 /**
- * @fileoverview Upgraded Receipt Modal Component for Promptbit POS with Web Bluetooth Direct Print
+ * @fileoverview Upgraded Receipt Modal Component for Promptbit POS with Web Bluetooth Direct Print (Chunking Fixed)
  * @module components/pos/ReceiptModal
  */
 
@@ -79,7 +79,7 @@ export default function ReceiptModal({
 }: ReceiptModalProps) {
   if (!isOpen || !transaction) return null;
 
-  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth โดยตรงไปยังเครื่องพิมพ์ความร้อน (รองรับ MX06 และเครื่องพิมพ์พกพาทั่วไป)
+  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth พร้อมระบบ Chunking ป้องกันเครื่องพิมพ์ดรอปข้อมูล
   const handleBluetoothPrint = async () => {
     const nav = navigator as any;
     if (!nav.bluetooth) {
@@ -177,9 +177,16 @@ export default function ReceiptModal({
       commands += "*** ขอบคุณที่ใช้บริการ ***\n";
       commands += "Please Come Again\n\n\n";
 
-      // 3. ส่งข้อมูลไปพิมพ์
+      // 3. ส่งข้อมูลแบบแบ่งย่อย (Chunking) ทีละ 100 bytes ป้องกัน Buffer ล้น
       const data = encoder.encode(commands);
-      await targetCharacteristic.writeValue(data);
+      const CHUNK_SIZE = 100;
+      
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, i + CHUNK_SIZE);
+        await targetCharacteristic.writeValue(chunk);
+        // หน่วงเวลา 20ms ให้เครื่องพิมพ์ประมวลผลทัน
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
 
       alert("พิมพ์ใบเสร็จผ่านบลูทูธสำเร็จ!");
     } catch (error: any) {
