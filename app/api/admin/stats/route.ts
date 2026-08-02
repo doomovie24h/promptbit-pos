@@ -9,8 +9,8 @@ export async function GET() {
       select: { total: true },
     });
     
-    // แก้ไขค่าเริ่มต้นของ reduce ให้เป็น 0 เพื่อขจัด Error type 'unknown' และ 'any'
-    const totalRevenue = allOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    // กำหนด Type ให้ sum เป็น number และ order เป็น any เพื่อป้องกัน Error type check
+    const totalRevenue = allOrders.reduce((sum: number, order: any) => sum + (order.total || 0), 0);
 
     const totalTables = await db.diningTable.count();
 
