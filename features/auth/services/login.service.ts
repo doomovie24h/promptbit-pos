@@ -1,16 +1,12 @@
 import bcrypt from "bcryptjs";
-
 import { db } from "@/lib/db/prisma";
-
 import type { LoginInput } from "../schemas/login.schema";
-
 
 export async function loginService(
   input: LoginInput
 ) {
-
   const user =
-    await db.user.findUnique({
+    await db.user.findFirst({
       where:{
         email: input.email,
       },
@@ -23,13 +19,11 @@ export async function loginService(
       },
     });
 
-
   if(!user){
     throw new Error(
       "Invalid credentials"
     );
   }
-
 
   const passwordMatch =
     await bcrypt.compare(
@@ -37,25 +31,21 @@ export async function loginService(
       user.password
     );
 
-
   if(!passwordMatch){
     throw new Error(
       "Invalid credentials"
     );
   }
 
-
   return {
-    id:user.id,
-
-    email:user.email,
-
-    stores:user.members.map(
-      (member)=>({
-        id:member.store.id,
-        name:member.store.name,
-        slug:member.store.slug,
-        role:member.role,
+    id: user.id,
+    email: user.email,
+    stores: user.members.map(
+      (member: any) => ({
+        id: member.store.id,
+        name: member.store.name,
+        slug: member.store.slug,
+        role: member.role,
       })
     ),
   };
