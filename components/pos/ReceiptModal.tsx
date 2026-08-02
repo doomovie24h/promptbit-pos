@@ -79,7 +79,7 @@ export default function ReceiptModal({
 }: ReceiptModalProps) {
   if (!isOpen || !transaction) return null;
 
-  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth โดยตรงไปยังเครื่องพิมพ์ความร้อน
+  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth โดยตรงไปยังเครื่องพิมพ์ความร้อน (รองรับ MX06 และเครื่องพิมพ์พกพาทั่วไป)
   const handleBluetoothPrint = async () => {
     const nav = navigator as any;
     if (!nav.bluetooth) {
@@ -88,14 +88,16 @@ export default function ReceiptModal({
     }
 
     try {
-      // 1. ขอเชื่อมต่ออุปกรณ์บลูทูธ
+      // 1. ขอเชื่อมต่ออุปกรณ์บลูทูธ (เปิดกว้างสำหรับเครื่องพิมพ์ความร้อน MX06 และรุ่นอื่นๆ)
       const device = await nav.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
           '000018f0-0000-1000-8000-00805f9b34fb',
           '49535343-fe7d-4ae5-8fa9-9fafd205e455',
           'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-          '0000ff00-0000-1000-8000-00805f9b34fb'
+          '0000ff00-0000-1000-8000-00805f9b34fb',
+          '0000ffe0-0000-1000-8000-00805f9b34fb',
+          '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
         ]
       });
 
@@ -106,18 +108,22 @@ export default function ReceiptModal({
       let targetCharacteristic = null;
 
       for (const service of services) {
-        const characteristics = await service.getCharacteristics();
-        for (const char of characteristics) {
-          if (char.properties.write || char.properties.writeWithoutResponse) {
-            targetCharacteristic = char;
-            break;
+        try {
+          const characteristics = await service.getCharacteristics();
+          for (const char of characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              targetCharacteristic = char;
+              break;
+            }
           }
+        } catch (err) {
+          console.log("Skip service error:", err);
         }
         if (targetCharacteristic) break;
       }
 
       if (!targetCharacteristic) {
-        throw new Error("ไม่พบช่องทางส่งข้อมูล (Characteristic) ไปยังเครื่องพิมพ์");
+        throw new Error("ไม่พบช่องทางส่งข้อมูล (Characteristic) ไปยังเครื่องพิมพ์ MX06");
       }
 
       // 2. แปลงข้อมูลใบเสร็จเป็น ESC/POS Commands
