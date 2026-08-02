@@ -1,8 +1,6 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { UtensilsCrossed, Plus, ShoppingCart, Check, SlidersHorizontal, Store, CheckCircle2 } from "lucide-react";
 
@@ -20,7 +18,7 @@ interface CartItem extends Product {
 
 const SWEETNESS_LEVELS = ["หวาน 0%", "หวาน 25%", "หวาน 50%", "หวาน 75%", "หวาน 100% (ปกติ)"];
 
-export default function CustomerOrderPage() {
+function OrderContent() {
   const searchParams = useSearchParams();
   const tableId = searchParams.get("table");
 
@@ -258,5 +256,13 @@ export default function CustomerOrderPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CustomerOrderPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#171717] text-zinc-100 flex items-center justify-center">กำลังโหลดเมนู...</div>}>
+      <OrderContent />
+    </Suspense>
   );
 }
