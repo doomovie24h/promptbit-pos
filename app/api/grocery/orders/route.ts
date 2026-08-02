@@ -42,10 +42,11 @@ export async function POST(request: Request) {
 
     let total = 0;
     for (const item of items) {
-      total += item.price * item.quantity;
+      total += (item.price || 0) * (item.quantity || 0);
     }
 
-    const result = await db.$transaction(async (tx) => {
+    // กำหนด Type : any ให้กับ tx เพื่อแก้ปัญหา TypeScript Type Error
+    const result = await db.$transaction(async (tx: any) => {
       const order = await tx.order.create({
         data: {
           storeId: member.storeId,
