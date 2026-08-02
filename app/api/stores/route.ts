@@ -54,7 +54,7 @@ async function getUserIdFromRequest(request: Request): Promise<string | null> {
       payload?.user?.id ||
       null
     );
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("Token verification failed:", err);
     return null;
   }
@@ -81,9 +81,10 @@ export async function GET(request: Request) {
       orderBy: { store: { createdAt: "desc" } },
     });
 
+    // กำหนด Type : any ให้กับพารามิเตอร์ member เพื่อป้องกัน Build Error
     const stores = storeMembers
-      .filter((member) => member.store !== null)
-      .map((member) => ({
+      .filter((member: any) => member.store !== null)
+      .map((member: any) => ({
         ...member.store,
         role: member.role,
       }));

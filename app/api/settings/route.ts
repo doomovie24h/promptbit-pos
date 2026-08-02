@@ -16,7 +16,7 @@ let systemSettings = {
 export async function GET() {
   try {
     return NextResponse.json(systemSettings);
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json({ success: false, message: 'Failed to fetch settings' }, { status: 500 });
   }
 }
@@ -37,7 +37,7 @@ export async function PUT(request: Request) {
       message: 'Settings updated successfully',
       data: systemSettings 
     });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json({ success: false, message: 'Failed to update settings' }, { status: 500 });
   }
 }

@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: tables });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get Tables Error:", error);
     return NextResponse.json({ success: false, message: "เกิดข้อผิดพลาดในการดึงข้อมูลโต๊ะ" }, { status: 500 });
   }
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: newTable });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Create Table Error:", error);
     return NextResponse.json({ success: false, message: "เกิดข้อผิดพลาดในการสร้างโต๊ะ" }, { status: 500 });
   }

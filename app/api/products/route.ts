@@ -35,7 +35,7 @@ async function getStrictStoreId(request: Request) {
       });
       if (membership) return activeStoreId;
     }
-  } catch (error) {
+  } catch (error: any) {
     // ignore
   }
 

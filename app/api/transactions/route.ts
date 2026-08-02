@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // ใช้ db.$transaction เพื่อรับประกันความถูกต้อง (หากมีข้อผิดพลาด ระบบจะ Rollback ทั้งหมด)
+    // ใช้ db.$transaction พร้อมกำหนด Type : any ให้กับ tx และ item ลูปย่อย
     const savedOrder = await db.$transaction(async (tx: any) => {
       
       // 1. วนลูปตรวจสอบสต็อก ตัดสต็อก และบันทึกประวัติ StockMovement
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
           data: { stock: newStock },
         });
 
-        // บันทึก Log การเคลื่อนไหวสต็อก (ใช้ connect เฉพาะ store และ product ส่วน user ใส่ตามที่มีหรือปล่อย null ได้)
+        // บันทึก Log การเคลื่อนไหวสต็อก
         await tx.stockMovement.create({
           data: {
             store: {

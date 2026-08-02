@@ -58,9 +58,12 @@ export async function GET(request: Request) {
     const totalOrders = orders.length;
     const productSalesMap: { [key: string]: { name: string; quantity: number; revenue: number } } = {};
 
-    orders.forEach((order) => {
+    // เพิ่ม Type : any ให้กับ order เพื่อแก้ปัญหา Implicit Any Type Error
+    orders.forEach((order: any) => {
       totalRevenue += order.total;
-      order.orderItems.forEach((item) => {
+      
+      // เพิ่ม Type : any ให้กับ item
+      order.orderItems.forEach((item: any) => {
         const productName = item.product?.name || "สินค้าไม่ระบุชื่อ";
         const productId = item.productId;
         if (!productSalesMap[productId]) {
@@ -82,8 +85,11 @@ export async function GET(request: Request) {
         bestSellers,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Reports API critical error:", error);
-    return NextResponse.json({ success: false, message: "Failed to fetch reports data" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: error?.message || "Failed to fetch reports data" },
+      { status: 500 }
+    );
   }
 }

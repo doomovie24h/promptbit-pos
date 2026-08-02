@@ -73,7 +73,8 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    const formattedOrders = orders.map((order) => ({
+    // กำหนด Type : any ให้กับ order เพื่อแก้ปัญหา Type Error
+    const formattedOrders = orders.map((order: any) => ({
       ...order,
       customer: order.customer?.name ?? "ลูกค้าทั่วไป",
       paymentMethod: order.payments?.[0]?.method ?? "CASH",
