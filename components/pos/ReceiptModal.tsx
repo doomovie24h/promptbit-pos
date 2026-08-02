@@ -62,11 +62,11 @@ const CODE_39_MAP: Record<string, string> = {
   'C': 'wnwnnwnnn', 'D': 'nnnnwwnnw', 'E': 'wnnnwwnnn', 'F': 'nnwnwwnnn',
   'G': 'nnnnnwwnw', 'H': 'wnnnnwwnn', 'I': 'nnwnnwwnn', 'J': 'nnnnwwwnn',
   'K': 'wnnnnnnww', 'L': 'nnwnnnnww', 'M': 'wnwnnnnwn', 'N': 'nnnnwnnww',
-  'O': 'wnnnwnnwn', 'P': 'nnwnwnnwn', 'Q': 'nnnnnnwww', 'R': 'wnnnnnwwn',
+  'O': 'wnnnwnnwn', 'P': 'nnwnwnnwn', 'Q': 'nnnnnnwww', 'R': 'nnnnnnwwn',
   'S': 'nnwnnnwwn', 'T': 'nnnnwnwwn', 'U': 'wwnnnnnnw', 'V': 'nwwnnnnnw',
   'W': 'wwwnnnnnn', 'X': 'nwnnwnnnw', 'Y': 'wwnnwnnnn', 'Z': 'nwnnwnnnn',
   '-': 'nwnnnnwnw', '.': 'wwnnnnwnn', ' ': 'nwwnnnwnn', '$': 'nnwnwnwnn',
-  '/': 'nnwnnwnwn', '+': 'nnwnwnwnn', '%': 'nnnwnwnwn', '*': 'nwnnwnwnn'
+  '/': 'nnwnnwnwn', '+': 'nnwnwnwnn', '%': 'nnnwnwnwn', '*': 'nwnnwnnnn'
 };
 
 export default function ReceiptModal({
@@ -79,7 +79,7 @@ export default function ReceiptModal({
 }: ReceiptModalProps) {
   if (!isOpen || !transaction) return null;
 
-  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth พร้อมระบบ Chunking ป้องกันเครื่องพิมพ์ดรอปข้อมูล
+  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth แบบมาตรฐานพร้อม Chunking ป้องกันดรอปข้อมูล
   const handleBluetoothPrint = async () => {
     const nav = navigator as any;
     if (!nav.bluetooth) {
@@ -88,7 +88,6 @@ export default function ReceiptModal({
     }
 
     try {
-      // 1. ขอเชื่อมต่ออุปกรณ์บลูทูธ (เปิดกว้างสำหรับเครื่องพิมพ์ความร้อน MX06 และรุ่นอื่นๆ)
       const device = await nav.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
@@ -123,25 +122,25 @@ export default function ReceiptModal({
       }
 
       if (!targetCharacteristic) {
-        throw new Error("ไม่พบช่องทางส่งข้อมูล (Characteristic) ไปยังเครื่องพิมพ์ MX06");
+        throw new Error("ไม่พบช่องทางส่งข้อมูล (Characteristic) ไปยังเครื่องพิมพ์");
       }
 
-      // 2. แปลงข้อมูลใบเสร็จเป็น ESC/POS Commands
+      // สร้าง ESC/POS Commands (พิมพ์แบบปกติทั่วไป พร้อมใส่ลายน้ำร้าน)
       const encoder = new TextEncoder();
-      let commands = "\x1B\x40"; // Initialize printer
+      let commands = "\x1B\x40"; // Initialize
       
-      // ส่วนหัว (Header - กึ่งกลาง)
+      // Header (Center)
       commands += "\x1B\x61\x01"; 
       commands += `${storeInfo.name || 'STORE'}\n`;
       if (storeInfo.address) commands += `${storeInfo.address}\n`;
       if (storeInfo.phone) commands += `Tel: ${storeInfo.phone}\n`;
       if (storeInfo.taxId) commands += `Tax ID: ${storeInfo.taxId}\n`;
+      if (storeInfo.branch) commands += `Branch: ${storeInfo.branch}\n`;
       commands += "--------------------------------\n";
       commands += "ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ\n";
-      commands += "Receipt / Tax Invoice\n";
       commands += "--------------------------------\n";
 
-      // ข้อมูลบิล (Meta - ชิดซ้าย)
+      // Meta (Left)
       commands += "\x1B\x61\x00"; 
       commands += `No: ${transaction.id}\n`;
       commands += `Date: ${transaction.date}\n`;
@@ -149,17 +148,17 @@ export default function ReceiptModal({
       if (transaction.tableNumber) commands += `Table: ${transaction.tableNumber}\n`;
       if (transaction.orderType) commands += `Type: ${transaction.orderType}\n`;
       commands += "--------------------------------\n";
-      commands += "ITEM           QTY     TOTAL(THB)\n";
+      commands += "ITEM           QTY    TOTAL(THB)\n";
       commands += "--------------------------------\n";
 
-      // รายการสินค้า
+      // Items
       transaction.items.forEach((item) => {
         commands += `${item.name}\n`;
         commands += `  ${item.quantity} ${item.unitName} x ${item.price.toFixed(2)} = ${item.total.toFixed(2)}\n`;
       });
       commands += "--------------------------------\n";
 
-      // สรุปยอดเงิน
+      // Summary
       commands += `Subtotal: ${(transaction.subtotal || transaction.totalAmount).toFixed(2)}\n`;
       if (transaction.discount > 0) {
         commands += `Discount: -${transaction.discount.toFixed(2)}\n`;
@@ -172,19 +171,19 @@ export default function ReceiptModal({
       }
       commands += "--------------------------------\n";
 
-      // ส่วนท้าย (Footer - กึ่งกลาง)
+      // Footer & Watermark
       commands += "\x1B\x61\x01"; 
       commands += "*** ขอบคุณที่ใช้บริการ ***\n";
-      commands += "Please Come Again\n\n\n";
+      commands += "Please Come Again\n\n";
+      commands += "Powered by Promptbit POS\n\n\n";
 
-      // 3. ส่งข้อมูลแบบแบ่งย่อย (Chunking) ทีละ 100 bytes ป้องกัน Buffer ล้น
+      // Chunking ส่งข้อมูลทีละ 100 bytes ป้องกัน Buffer ล้น
       const data = encoder.encode(commands);
       const CHUNK_SIZE = 100;
       
       for (let i = 0; i < data.length; i += CHUNK_SIZE) {
         const chunk = data.slice(i, i + CHUNK_SIZE);
         await targetCharacteristic.writeValue(chunk);
-        // หน่วงเวลา 20ms ให้เครื่องพิมพ์ประมวลผลทัน
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
 
@@ -244,7 +243,7 @@ export default function ReceiptModal({
             isDarkMode ? "bg-[#181818] border-zinc-800" : "bg-slate-50 border-slate-200"
           } print:bg-white`}
         >
-          {/* Modal Header (ซ่อนตอนพิมพ์) */}
+          {/* Modal Header */}
           <div className={`flex justify-between items-center px-6 py-4 border-b print:hidden ${
             isDarkMode ? "bg-[#202020] border-zinc-800 text-white" : "bg-white border-slate-200 text-slate-800"
           }`}>
@@ -269,7 +268,7 @@ export default function ReceiptModal({
             </button>
           </div>
 
-          {/* ส่วนเนื้อหาใบเสร็จ (Receipt Scroll Area) */}
+          {/* ส่วนเนื้อหาใบเสร็จ */}
           <div className="p-6 overflow-y-auto print:overflow-visible print:p-0 custom-scrollbar flex-1 flex justify-center">
             <div id="receipt-content" className="receipt-paper w-[320px] bg-white text-slate-900 font-mono text-[11px] p-6 rounded-2xl border border-slate-200/80 shadow-md print:border-none print:p-0 print:m-0 print:shadow-none">
               
@@ -310,7 +309,7 @@ export default function ReceiptModal({
                 <p className="text-[9px] text-slate-500 uppercase tracking-tight font-sans">Receipt / Tax Invoice (Abbreviated)</p>
               </div>
 
-              {/* ข้อมูลบิล (Transaction Meta) */}
+              {/* ข้อมูลบิล */}
               <div className="space-y-1 text-[10px] text-slate-700 mb-3 pb-2 border-b border-dashed border-slate-200 font-sans">
                 <div className="flex justify-between">
                   <span className="text-slate-500">เลขที่ (No):</span>
@@ -362,7 +361,7 @@ export default function ReceiptModal({
                 </div>
               </div>
 
-              {/* สรุปยอดเงิน (Financial Summary) */}
+              {/* สรุปยอดเงิน */}
               <div className="space-y-1 text-[11px] mb-3 pt-1 border-t border-dashed border-slate-300">
                 <div className="flex justify-between text-slate-600 font-sans">
                   <span>รวมเป็นเงิน (Subtotal)</span>
@@ -428,7 +427,7 @@ export default function ReceiptModal({
             </div>
           </div>
 
-          {/* Action Buttons (ซ่อนตอนพิมพ์) */}
+          {/* Action Buttons */}
           <div className={`p-4 border-t space-y-2 print:hidden ${
             isDarkMode ? "bg-[#202020] border-zinc-800" : "bg-white border-slate-200"
           }`}>
