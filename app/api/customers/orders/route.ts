@@ -24,7 +24,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const order = await db.$transaction(async (tx) => {
+    // กำหนด Type : any ให้กับ tx เพื่อป้องกัน Type Error
+    const order = await db.$transaction(async (tx: any) => {
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const orderNumber = `ORD-${randomNum}`;
 
