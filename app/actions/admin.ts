@@ -89,9 +89,9 @@ export async function getPlatformData() {
     });
 
     const totalStores = stores.length;
-    const cafeStores = stores.filter((s) => s.businessType === "cafe").length;
-    const groceryStores = stores.filter((s) => s.businessType === "grocery").length;
-    const premiumStoresCount = stores.filter((s) => s.isPremium || s.subscriptionStatus === "ACTIVE").length;
+    const cafeStores = stores.filter((s: any) => s.businessType === "cafe").length;
+    const groceryStores = stores.filter((s: any) => s.businessType === "grocery").length;
+    const premiumStoresCount = stores.filter((s: any) => s.isPremium || s.subscriptionStatus === "ACTIVE").length;
 
     let totalRevenue = 0;
     let allOrders: any[] = [];
