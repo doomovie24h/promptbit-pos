@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
-import { StockMovementType, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
@@ -55,7 +54,7 @@ export async function POST(request: Request) {
           data: { stock: newStock },
         });
 
-        // บันทึก Log การเคลื่อนไหวสต็อก
+        // บันทึก Log การเคลื่อนไหวสต็อก (ใช้ string "SALE" แทนการใช้ Enum ที่อาจไม่มีใน Prisma Client)
         await tx.stockMovement.create({
           data: {
             store: {
@@ -69,7 +68,7 @@ export async function POST(request: Request) {
                 connect: { id: userId },
               }
             } : {}),
-            type: StockMovementType.SALE,
+            type: "SALE",
             quantity: -item.quantity, // ติดลบเนื่องจากเป็นการขายออก
             balanceAfter: newStock,
             notes: `ขายสินค้าผ่านระบบ POS`,
@@ -85,8 +84,8 @@ export async function POST(request: Request) {
       const order = await tx.order.create({
         data: {
           orderNumber,
-          type: type as OrderType,
-          status: OrderStatus.COMPLETED,
+          type: type,
+          status: "COMPLETED",
           subtotal: Number(subtotal || totalAmount),
           discount: Number(discount),
           tax: Number(tax),
@@ -111,8 +110,8 @@ export async function POST(request: Request) {
               amount: Number(totalAmount),
               received: Number(receivedAmount || totalAmount),
               change: Number(changeAmount || 0),
-              method: paymentMethod as PaymentMethod,
-              status: PaymentStatus.PAID,
+              method: paymentMethod,
+              status: "PAID",
               storeId,
             },
           },
