@@ -1,5 +1,5 @@
 /**
- * @fileoverview Upgraded Receipt Modal Component for Promptbit POS with Real Barcode
+ * @fileoverview Upgraded Receipt Modal Component for Promptbit POS with Web Bluetooth Direct Print
  * @module components/pos/ReceiptModal
  */
 
@@ -79,8 +79,107 @@ export default function ReceiptModal({
 }: ReceiptModalProps) {
   if (!isOpen || !transaction) return null;
 
-  const handlePrint = () => {
-    window.print();
+  // ฟังก์ชันสั่งพิมพ์ผ่าน Web Bluetooth โดยตรงไปยังเครื่องพิมพ์ความร้อน
+  const handleBluetoothPrint = async () => {
+    const nav = navigator as any;
+    if (!nav.bluetooth) {
+      alert("เบราว์เซอร์นี้ไม่รองรับ Web Bluetooth (แนะนำให้ใช้ Google Chrome บน Android/PC หรือแอป Bluefy บน iOS)");
+      return;
+    }
+
+    try {
+      // 1. ขอเชื่อมต่ออุปกรณ์บลูทูธ
+      const device = await nav.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          '000018f0-0000-1000-8000-00805f9b34fb',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+          'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+          '0000ff00-0000-1000-8000-00805f9b34fb'
+        ]
+      });
+
+      const server = await device.gatt?.connect();
+      if (!server) throw new Error("ไม่สามารถเชื่อมต่อเครื่องพิมพ์ผ่าน Bluetooth ได้");
+
+      const services = await server.getPrimaryServices();
+      let targetCharacteristic = null;
+
+      for (const service of services) {
+        const characteristics = await service.getCharacteristics();
+        for (const char of characteristics) {
+          if (char.properties.write || char.properties.writeWithoutResponse) {
+            targetCharacteristic = char;
+            break;
+          }
+        }
+        if (targetCharacteristic) break;
+      }
+
+      if (!targetCharacteristic) {
+        throw new Error("ไม่พบช่องทางส่งข้อมูล (Characteristic) ไปยังเครื่องพิมพ์");
+      }
+
+      // 2. แปลงข้อมูลใบเสร็จเป็น ESC/POS Commands
+      const encoder = new TextEncoder();
+      let commands = "\x1B\x40"; // Initialize printer
+      
+      // ส่วนหัว (Header - กึ่งกลาง)
+      commands += "\x1B\x61\x01"; 
+      commands += `${storeInfo.name || 'STORE'}\n`;
+      if (storeInfo.address) commands += `${storeInfo.address}\n`;
+      if (storeInfo.phone) commands += `Tel: ${storeInfo.phone}\n`;
+      if (storeInfo.taxId) commands += `Tax ID: ${storeInfo.taxId}\n`;
+      commands += "--------------------------------\n";
+      commands += "ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ\n";
+      commands += "Receipt / Tax Invoice\n";
+      commands += "--------------------------------\n";
+
+      // ข้อมูลบิล (Meta - ชิดซ้าย)
+      commands += "\x1B\x61\x00"; 
+      commands += `No: ${transaction.id}\n`;
+      commands += `Date: ${transaction.date}\n`;
+      if (transaction.customerName) commands += `Customer: ${transaction.customerName}\n`;
+      if (transaction.tableNumber) commands += `Table: ${transaction.tableNumber}\n`;
+      if (transaction.orderType) commands += `Type: ${transaction.orderType}\n`;
+      commands += "--------------------------------\n";
+      commands += "ITEM           QTY     TOTAL(THB)\n";
+      commands += "--------------------------------\n";
+
+      // รายการสินค้า
+      transaction.items.forEach((item) => {
+        commands += `${item.name}\n`;
+        commands += `  ${item.quantity} ${item.unitName} x ${item.price.toFixed(2)} = ${item.total.toFixed(2)}\n`;
+      });
+      commands += "--------------------------------\n";
+
+      // สรุปยอดเงิน
+      commands += `Subtotal: ${(transaction.subtotal || transaction.totalAmount).toFixed(2)}\n`;
+      if (transaction.discount > 0) {
+        commands += `Discount: -${transaction.discount.toFixed(2)}\n`;
+      }
+      commands += `TOTAL: ${transaction.totalAmount.toFixed(2)} THB\n`;
+      commands += `Payment: ${transaction.paymentMethod}\n`;
+      commands += `Received: ${transaction.receivedAmount.toFixed(2)}\n`;
+      if (transaction.paymentMethod === "CASH") {
+        commands += `Change: ${transaction.changeAmount.toFixed(2)}\n`;
+      }
+      commands += "--------------------------------\n";
+
+      // ส่วนท้าย (Footer - กึ่งกลาง)
+      commands += "\x1B\x61\x01"; 
+      commands += "*** ขอบคุณที่ใช้บริการ ***\n";
+      commands += "Please Come Again\n\n\n";
+
+      // 3. ส่งข้อมูลไปพิมพ์
+      const data = encoder.encode(commands);
+      await targetCharacteristic.writeValue(data);
+
+      alert("พิมพ์ใบเสร็จผ่านบลูทูธสำเร็จ!");
+    } catch (error: any) {
+      console.error(error);
+      alert("พิมพ์ไม่สำเร็จ: " + (error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อบลูทูธ"));
+    }
   };
 
   const getPaymentMethodText = (method: string) => {
@@ -112,7 +211,7 @@ export default function ReceiptModal({
         }
         x += currentWidth;
       }
-      x += barWidth; // ช่องว่างระหว่างตัวอักษร (Inter-character gap)
+      x += barWidth;
     }
     const totalWidth = x + 10;
 
@@ -198,7 +297,7 @@ export default function ReceiptModal({
                 <p className="text-[9px] text-slate-500 uppercase tracking-tight font-sans">Receipt / Tax Invoice (Abbreviated)</p>
               </div>
 
-              {/* ข้อมูลบิล (Transaction Meta) - ลบข้อมูลแคชเชียร์ออกแล้ว */}
+              {/* ข้อมูลบิล (Transaction Meta) */}
               <div className="space-y-1 text-[10px] text-slate-700 mb-3 pb-2 border-b border-dashed border-slate-200 font-sans">
                 <div className="flex justify-between">
                   <span className="text-slate-500">เลขที่ (No):</span>
@@ -321,11 +420,11 @@ export default function ReceiptModal({
             isDarkMode ? "bg-[#202020] border-zinc-800" : "bg-white border-slate-200"
           }`}>
             <button
-              onClick={handlePrint}
+              onClick={handleBluetoothPrint}
               className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-[0.99]"
             >
               <Printer size={16} />
-              <span>พิมพ์ใบเสร็จ (Print Slip 80mm)</span>
+              <span>พิมพ์ใบเสร็จผ่านบลูทูธ (Bluetooth Print)</span>
             </button>
             <button
               onClick={onNewSale}
@@ -342,41 +441,6 @@ export default function ReceiptModal({
 
         </div>
       </div>
-
-      {/* สไตล์สำหรับบังคับพิมพ์เครื่องพิมพ์สลิป 80 มม. */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .receipt-paper, .receipt-paper * {
-            visibility: visible;
-          }
-          @page {
-            size: 80mm auto;
-            margin: 0mm;
-          }
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background-color: white !important;
-            -webkit-print-color-adjust: exact;
-          }
-          .receipt-paper {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 78mm !important;
-            max-width: 78mm !important;
-            padding: 4mm !important;
-            margin: 0 !important;
-            color: black !important;
-            background: white !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-        }
-      `}</style>
     </>
   );
 }
