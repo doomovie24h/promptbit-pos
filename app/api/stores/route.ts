@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth/jwt";
-import { Role } from "@prisma/client";
 
 interface JwtPayload {
   userId?: string;
@@ -81,7 +80,6 @@ export async function GET(request: Request) {
       orderBy: { store: { createdAt: "desc" } },
     });
 
-    // กำหนด Type : any ให้กับพารามิเตอร์ member เพื่อป้องกัน Build Error
     const stores = storeMembers
       .filter((member: any) => member.store !== null)
       .map((member: any) => ({
@@ -158,7 +156,7 @@ export async function POST(request: Request) {
       finalSlug = `${finalSlug}-${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
-    // บันทึกข้อมูลร้านค้าลงฐานข้อมูล (แม็พฟิลด์ promptpayId เข้ากับ promptPayNumber)
+    // บันทึกข้อมูลร้านค้าลงฐานข้อมูล
     const newStore = await db.store.create({
       data: {
         name: name.trim(),
@@ -174,7 +172,7 @@ export async function POST(request: Request) {
         members: {
           create: {
             userId: userId,
-            role: Role.OWNER,
+            role: "OWNER",
           },
         },
       },
