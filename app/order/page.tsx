@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+export const dynamic = "force-dynamic";
+
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { UtensilsCrossed, Plus, ShoppingCart, Check, SlidersHorizontal, Store, CheckCircle2 } from "lucide-react";
 
@@ -29,14 +31,12 @@ export default function CustomerOrderPage() {
   const [loading, setLoading] = useState(true);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Modal เลือกระดับความหวาน
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [sweetness, setSweetness] = useState("หวาน 100% (ปกติ)");
   const [customNote, setCustomNote] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    // โหลดข้อมูลโต๊ะและสินค้าของร้านผ่าน Table ID
     if (tableId) {
       fetch(`/api/customer/menu?tableId=${tableId}`)
         .then((res) => res.json())
@@ -144,7 +144,6 @@ export default function CustomerOrderPage() {
 
   return (
     <div className="min-h-screen bg-[#171717] text-zinc-100 flex flex-col max-w-2xl mx-auto pb-24">
-      {/* Header ร้านและโต๊ะ */}
       <div className="bg-[#212121] border-b border-[#2f2f2f] p-6 sticky top-0 z-20 space-y-1">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-[#21F1A8] uppercase tracking-wider flex items-center gap-1.5">
@@ -157,7 +156,6 @@ export default function CustomerOrderPage() {
         <h1 className="text-xl font-bold">เมนูอาหารและเครื่องดื่ม</h1>
       </div>
 
-      {/* รายการสินค้า */}
       <div className="p-6 space-y-4 flex-1">
         {loading ? (
           <div className="text-center py-20 text-zinc-500">กำลังโหลดเมนู...</div>
@@ -186,7 +184,6 @@ export default function CustomerOrderPage() {
         )}
       </div>
 
-      {/* ตะกร้าและปุ่มยืนยันด้านล่าง */}
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#212121]/95 backdrop-blur-md border-t border-[#2f2f2f] p-4 max-w-2xl mx-auto flex items-center justify-between shadow-2xl z-30">
           <div>
@@ -202,7 +199,6 @@ export default function CustomerOrderPage() {
         </div>
       )}
 
-      {/* Modal เลือกระดับความหวาน */}
       {isModalOpen && selectedProduct && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#212121] border border-[#333] rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
