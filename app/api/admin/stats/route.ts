@@ -19,7 +19,7 @@ export async function GET() {
         _count: {
           select: {
             orders: true,
-            diningTables: true,
+            tables: true, // แก้ไขจาก diningTables เป็น tables ให้ตรงกับ Prisma Schema
             products: true,
           },
         },
