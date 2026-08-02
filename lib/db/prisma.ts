@@ -1,0 +1,23 @@
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+  });
+
+// ส่งออก alias เพิ่มเติมเพื่อให้รองรับทั้ง import { db } และ import { prisma }
+export const prisma = db;
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = db;
+}

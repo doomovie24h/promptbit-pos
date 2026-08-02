@@ -1,0 +1,509 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum OrderStatus {
+  WAITING
+  COOKING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum PaymentMethod {
+  CASH
+  PROMPTPAY
+  BANK
+  CARD
+  CREDIT // ระบบเงินเชื่อ / ติดสมุด
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum DebtStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum StockMovementType {
+  RESTOCK     // รับสินค้าเข้าจาก Supplier
+  SALE        // ขายสินค้า
+  RETURN      // ลูกค้าคืนสินค้า
+  ADJUSTMENT  // ตรวจนับสต็อก / ปรับปรุงยอด
+  DAMAGED     // สินค้าชำรุด / เสียหาย / หมดอายุ
+}
+
+enum PurchaseOrderStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+// ==========================================
+// USER & AUTH MODELS
+// ==========================================
+
+model User {
+  id             String   @id @default(uuid())
+  username       String   @unique @default("admin_user")
+  email          String?
+  password       String
+  recoveryType   String   @default("email")
+  recoveryValue  String   @default("admin@promptbit.com")
+  isVerified     Boolean  @default(false)
+  isSuperAdmin   Boolean  @default(false)
+  image          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members        StoreMember[]
+  orders         Order[]
+  otps           OtpCode[]
+  shifts         Shift[]
+  cashDrawerLogs CashDrawerLog[]
+  debtPayments   DebtPayment[]
+  stockMovements StockMovement[]
+  expenses       Expense[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ==========================================
+// STORE & STORE MEMBERS
+// ==========================================
+
+model Store {
+  id                 String   @id @default(uuid())
+  name               String
+  description        String?
+  slug               String   @unique
+  businessType       String   @default("grocery") // grocery, cafe, restaurant, etc.
+  
+  // ---> ฟิลด์ที่อยู่และพิกัดแผนที่ (รองรับจากหน้า Setup) <---
+  address            String?
+  latitude           Float?
+  longitude          Float?
+
+  // ---> ฟิลด์ตั้งค่าการรับเงินและการตั้งค่าร้าน <---
+  promptPayNumber    String?  // เลขพร้อมเพย์ประจำร้าน (รับค่าจาก promptpayId ในฟอร์ม)
+  bankName           String?  // ธนาคาร
+  accountName        String?  // ชื่อบัญชีธนาคาร
+  soundEnabled       Boolean  @default(true) // เปิด-ปิดเสียงเตือน
+  autoPrint          Boolean  @default(true) // พิมพ์ใบเสร็จอัตโนมัติ
+
+  taxRate            Float    @default(0)
+  serviceChargeRate  Float    @default(0)
+  receiptFooter      String?
+
+  isPremium          Boolean  @default(false)
+  subscriptionStatus String   @default("INACTIVE")
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  members            StoreMember[]
+  categories         Category[]
+  products           Product[]
+  customers          Customer[]
+  tables             DiningTable[]
+  orders             Order[]
+  payments           Payment[]
+  shifts             Shift[]
+  cashDrawerLogs     CashDrawerLog[]
+  debtRecords        DebtRecord[]
+  debtPayments       DebtPayment[]
+  suppliers          Supplier[]      @relation("StoreSuppliers")
+  purchaseOrders     PurchaseOrder[]
+  stockMovements     StockMovement[]
+  expenses           Expense[]
+}
+
+model StoreMember {
+  id      String @id @default(uuid())
+  userId  String
+  storeId String
+  role    Role   @default(STAFF)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+}
+
+// ==========================================
+// PRODUCT & INVENTORY MODELS (รองรับ Multi-Units)
+// ==========================================
+
+model Category {
+  id      String @id @default(uuid())
+  name    String
+  storeId String
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  image       String?
+  price       Float
+  cost        Float    @default(0)
+  barcode     String?
+  sku         String?
+  stock       Int      @default(0)
+  minStock    Int      @default(5)
+  trackStock  Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  baseUnit    String   @default("ชิ้น")
+  categoryId  String
+  storeId     String
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  units          ProductUnit[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+  purchaseItems  PurchaseOrderItem[]
+}
+
+model ProductUnit {
+  id               String  @id @default(uuid())
+  productId        String
+  name             String
+  conversionFactor Int     @default(1)
+  price            Float
+  cost             Float?
+  barcode          String?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  orderItems OrderItem[]
+}
+
+// ==========================================
+// SUPPLIER & PURCHASE ORDER MODELS
+// ==========================================
+
+model Supplier {
+  id          String   @id @default(uuid())
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  storeId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store          Store           @relation("StoreSuppliers", fields: [storeId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id              String              @id @default(uuid())
+  poNumber        String              @default("PO-0000")
+  storeId         String
+  supplierId      String
+  userId          String              // ผู้สร้าง PO
+  status          PurchaseOrderStatus @default(PENDING)
+  totalAmount     Float               @default(0)
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  store    Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  creator  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items    PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id              String @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Int
+  unitCost        Float
+  totalCost       Float
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// INVENTORY LOG / STOCK MOVEMENT
+// ==========================================
+
+model StockMovement {
+  id           String             @id @default(uuid())
+  storeId      String
+  productId    String
+  userId       String?            // ปรับให้เป็น Optional รองรับกรณีไม่ระบุ User
+  type         StockMovementType
+  quantity     Int                // จำนวนที่เพิ่มขึ้น หรือ ลดลง
+  balanceAfter Int                // สต็อกคงเหลือหลังทำรายการ
+  referenceId  String?            // อ้างอิง Order ID หรือ PO ID
+  notes        String?
+  createdAt    DateTime           @default(now())
+
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// ==========================================
+// SHIFT & CASH DRAWER MODELS
+// ==========================================
+
+model Shift {
+  id           String      @id @default(uuid())
+  storeId      String
+  userId       String
+  status       ShiftStatus @default(OPEN)
+  openedAt     DateTime    @default(now())
+  closedAt     DateTime?
+  startCash    Float
+  expectedCash Float       @default(0)
+  actualCash   Float?
+  difference   Float?
+  notes        String?
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orders         Order[]
+  cashDrawerLogs CashDrawerLog[]
+  debtPayments   DebtPayment[]
+}
+
+model CashDrawerLog {
+  id        String   @id @default(uuid())
+  storeId   String
+  userId    String
+  shiftId   String?
+  reason    String   // เช่น "นำเงินทอนเข้า", "The drawer was opened manually"
+  notes     String?
+  createdAt DateTime @default(now())
+
+  store Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+}
+
+// ==========================================
+// CUSTOMER & CREDIT LEDGER
+// ==========================================
+
+model Customer {
+  id          String  @id @default(uuid())
+  name        String?
+  phone       String?
+  address     String?
+  points      Int     @default(0)
+  creditLimit Float   @default(0)
+  currentDebt Float   @default(0)
+  storeId     String
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  orders         Order[]
+  debtRecords    DebtRecord[]
+  debtPayments   DebtPayment[]
+  pointHistories CustomerPointHistory[]
+}
+
+model CustomerPointHistory {
+  id          String   @id @default(uuid())
+  customerId  String
+  points      Int      // บวกคือได้แต้ม, ลบคือใช้แต้ม
+  type        String   // EARN, REDEEM, ADJUST
+  description String?
+  createdAt   DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model DebtRecord {
+  id              String     @id @default(uuid())
+  storeId         String
+  customerId      String
+  orderId         String?    @unique
+  totalAmount     Float
+  paidAmount      Float      @default(0)
+  remainingAmount Float
+  status          DebtStatus @default(UNPAID)
+  dueDate         DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  store    Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order    Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payments DebtPayment[]
+}
+
+model DebtPayment {
+  id           String        @id @default(uuid())
+  storeId      String
+  customerId   String
+  debtRecordId String?
+  shiftId      String?
+  userId       String
+  amount       Float
+  method       PaymentMethod
+  createdAt    DateTime      @default(now())
+
+  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  debtRecord DebtRecord? @relation(fields: [debtRecordId], references: [id], onDelete: SetNull)
+  shift      Shift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  cashier    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// ORDER & PAYMENT MODELS
+// ==========================================
+
+model DiningTable {
+  id      String @id @default(uuid())
+  name    String
+  qrCode  String @unique
+  status  String @default("AVAILABLE")
+  storeId String
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  orders Order[]
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @default("ORD-0000")
+  type          OrderType   @default(TAKEAWAY)
+  status        OrderStatus @default(COMPLETED)
+  subtotal      Float       @default(0)
+  discount      Float       @default(0)
+  tax           Float       @default(0)
+  serviceCharge Float       @default(0)
+  total         Float       @default(0)
+  notes         String?
+  storeId       String
+  customerId    String?
+  tableId       String?
+  userId        String?
+  shiftId       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  store    Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  table    DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  cashier  User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shift    Shift?       @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  orderItems OrderItem[]
+  payments   Payment[]
+  debtRecord DebtRecord?
+}
+
+model OrderItem {
+  id               String  @id @default(uuid())
+  quantity         Int
+  price            Float
+  total            Float   @default(0)
+  unitName         String  @default("ชิ้น")
+  conversionFactor Int     @default(1)
+  note             String?
+  orderId          String
+  productId        String
+  productUnitId    String?
+
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productUnit ProductUnit? @relation(fields: [productUnitId], references: [id], onDelete: SetNull)
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  amount      Float
+  received    Float         @default(0)
+  change      Float         @default(0)
+  method      PaymentMethod
+  status      PaymentStatus @default(PAID)
+  referenceNo String?
+  orderId     String
+  storeId     String
+  createdAt   DateTime      @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// EXPENSE & ANNOUNCEMENT MODELS
+// ==========================================
+
+model Expense {
+  id          String   @id @default(uuid())
+  storeId     String
+  userId      String   // ผู้บันทึกค่าใช้จ่าย
+  title       String   // เช่น "ค่าน้ำ", "ค่าไฟ", "ซื้อวัตถุดิบเพิ่มเติม"
+  category    String   @default("GENERAL") // UTILITIES, SUPPLIES, RENT, SALARY, OTHER
+  amount      Float
+  notes       String?
+  expenseDate DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+}

@@ -1,26 +1,110 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* กำหนด Variant สำหรับ Dark Mode ใน Tailwind v4 (รองรับ class="dark") */
+@custom-variant dark (&:where(.dark, .dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #F0EDE4; /* SAND */
+    --foreground: #171717;
+    
+    --card: #FFFFFF;
+    --card-foreground: #171717;
+    
+    --popover: #FFFFFF;
+    --popover-foreground: #171717;
+    
+    --primary: #004741; /* Cyprus */
+    --primary-foreground: #F0EDE4;
+    
+    --secondary: #E5E1D8;
+    --secondary-foreground: #004741;
+    
+    --muted: #E5E1D8;
+    --muted-foreground: #555555;
+    
+    --accent: #E5E1D8;
+    --accent-foreground: #004741;
+    
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+    
+    --border: #D8D4CB;
+    --input: #D8D4CB;
+    --ring: #004741;
+    
+    --sidebar-background: #004741; /* Cyprus Topbar/Sidebar */
+    --sidebar-foreground: #F0EDE4;
+    
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: #171717; /* Darkgray */
+    --foreground: #F0EDE4;
+    
+    --card: #222222;
+    --card-foreground: #F0EDE4;
+    
+    --popover: #222222;
+    --popover-foreground: #F0EDE4;
+    
+    --primary: #21F1A8; /* Tiffany */
+    --primary-foreground: #171717;
+    
+    --secondary: #2A2A2A;
+    --secondary-foreground: #21F1A8;
+    
+    --muted: #2A2A2A;
+    --muted-foreground: #A0A0A0;
+    
+    --accent: #2A2A2A;
+    --accent-foreground: #21F1A8;
+    
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+    
+    --border: #333333;
+    --input: #333333;
+    --ring: #21F1A8;
+    
+    --sidebar-background: #21F1A8; /* Tiffany Topbar/Sidebar */
+    --sidebar-foreground: #171717;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
 }
