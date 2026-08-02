@@ -78,7 +78,7 @@ export class AuthService {
     return {
       user: {
         id: user.id,
-        email: user.email,
+        email: user.email!, // เติมเครื่องหมาย ! เพื่อป้องกัน Type 'null' ไม่ให้ชนกับ RegisterResponse
         role: "OWNER",
       },
 
