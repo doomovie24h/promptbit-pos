@@ -15,7 +15,6 @@ export const db =
     adapter,
   });
 
-// ส่งออก alias เพิ่มเติมเพื่อให้รองรับทั้ง import { db } และ import { prisma }
 export const prisma = db;
 
 if (process.env.NODE_ENV !== "production") {

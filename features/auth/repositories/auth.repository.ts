@@ -2,7 +2,7 @@ import { db } from "@/lib/db/prisma";
 
 export class AuthRepository {
   async findUserByEmail(email: string) {
-    return db.user.findUnique({
+    return db.user.findFirst({
       where: {
         email,
       },
