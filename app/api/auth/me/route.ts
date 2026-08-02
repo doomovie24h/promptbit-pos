@@ -17,11 +17,8 @@ export async function GET(){
 
   try{
 
-
     const token =
       await getAuthCookie();
-
-
 
     if(!token){
 
@@ -37,19 +34,11 @@ export async function GET(){
 
     }
 
-
-
-
     const payload =
       await verifyToken(token);
 
-
-
     const userId =
       payload.userId as string;
-
-
-
 
     const user =
       await db.user.findUnique({
@@ -58,32 +47,21 @@ export async function GET(){
           id:userId,
         },
 
-
         include:{
 
-
           members:{
-
 
             include:{
               store:true,
             },
 
-
           },
-
 
         },
 
-
       });
 
-
-
-
-
     if(!user){
-
 
       return NextResponse.json(
 
@@ -98,90 +76,55 @@ export async function GET(){
 
       );
 
-
     }
 
-
-
-
-
+    // กำหนด Type : any ให้กับพารามิเตอร์ member เพื่อป้องกัน Type Error
     const stores =
       user.members.map(
-        (member)=>({
+        (member: any)=>({
 
           id:
           member.store.id,
 
-
           name:
           member.store.name,
-
 
           slug:
           member.store.slug,
 
-
           role:
           member.role,
-
 
         })
       );
 
-
-
-
-
     const currentStore =
       stores[0] ?? null;
 
-
-
-
-
     return NextResponse.json({
-
 
       success:true,
 
-
       data:{
-
 
         id:
         user.id,
 
-
         email:
         user.email,
-
-
 
         store:
         currentStore,
 
-
-
         stores,
-
-
 
       },
 
-
-
     });
-
-
-
-
 
   }catch(error){
 
-
     console.error(error);
-
-
 
     return NextResponse.json(
 
@@ -196,8 +139,6 @@ export async function GET(){
 
     );
 
-
   }
-
 
 }
