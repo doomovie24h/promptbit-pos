@@ -103,10 +103,11 @@ export async function GET(request: Request) {
 
     const sales = revenue._sum.amount ?? 0;
 
-    const formattedOrders = recentOrders.map((order) => {
+    // กำหนด Type : any ให้ order, sum, และ item เพื่อแก้ปัญหา TypeScript Type Error
+    const formattedOrders = recentOrders.map((order: any) => {
       const total = order.orderItems.reduce(
-        (sum, item) => {
-          return sum + item.price * item.quantity;
+        (sum: number, item: any) => {
+          return sum + (item.price || 0) * (item.quantity || 0);
         },
         0
       );
