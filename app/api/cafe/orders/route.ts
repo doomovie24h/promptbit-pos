@@ -42,8 +42,8 @@ export async function POST(request: Request) {
 
     const storeId = member.storeId;
 
-    // ทำธุรกรรมบันทึกออร์เดอร์และตัดสต็อกอัตโนมัติ
-    const order = await db.$transaction(async (tx) => {
+    // ทำธุรกรรมบันทึกออร์เดอร์และตัดสต็อกอัตโนมัติ (กำหนด type : any ให้กับ tx)
+    const order = await db.$transaction(async (tx: any) => {
       const orderNumber = `CAFE-${Math.floor(1000 + Math.random() * 9000)}`;
 
       const newOrder = await tx.order.create({
