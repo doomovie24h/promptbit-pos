@@ -1,5 +1,5 @@
 /**
- * @fileoverview High-Speed Auto-Scan Barcode Modal (Direct to Cart)
+ * @fileoverview Barcode Scanner Modal - Production Core Logic
  * @module components/BarcodeScannerModal
  */
 
@@ -7,47 +7,38 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { X, Camera, RefreshCw, AlertCircle } from "lucide-react";
-import { toast } from "sonner";
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
-  lang?: "th" | "en";
 }
 
 export default function BarcodeScannerModal({
   isOpen,
   onClose,
   onScan,
-  lang = "th",
 }: BarcodeScannerModalProps) {
-  const [scannerError, setScannerError] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const divId = "interactive-barcode-scanner-viewport";
+  const divId = "barcode-scanner-viewport-core";
 
-  // เสียงปี๊บเมื่อสแกนโดน
   const playBeep = () => {
     try {
-      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const audioCtx = new AudioContextClass();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.12);
-    } catch (e) {
-      console.error("Audio error:", e);
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1000, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch {
+      // ignore audio context restrictions
     }
   };
 
@@ -62,71 +53,51 @@ export default function BarcodeScannerModal({
           // ignore
         }
       }
-      setIsScanning(false);
       return;
     }
 
-    setScannerError(null);
+    setErrorMessage(null);
     let html5QrCode: Html5Qrcode | null = null;
     let hasScanned = false;
 
-    const startScanner = async () => {
+    const initScanner = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        
+        await new Promise((r) => setTimeout(r, 200));
         html5QrCode = new Html5Qrcode(divId);
         scannerRef.current = html5QrCode;
 
-        const qrCodeSuccessCallback = (decodedText: string) => {
-          if (hasScanned) return;
-          hasScanned = true;
-
-          playBeep();
-          toast.success(lang === "th" ? `สแกนสำเร็จ: ${decodedText}` : `Scanned: ${decodedText}`);
-
-          try {
-            if (html5QrCode && html5QrCode.isScanning) {
-              html5QrCode.stop().catch(() => {});
-            }
-          } catch {
-            // ignore
-          }
-
-          // ส่งบาร์โค้ดตรงไปที่ระบบตะกร้าทันที
-          onScan(decodedText);
-          onClose();
-        };
-
-        const config = {
-          fps: 30, // เร่งความเร็วเฟรมเรตสูงสุดเพื่อให้จับภาพได้ทันที
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const width = Math.floor(viewfinderWidth * 0.85);
-            const height = Math.floor(viewfinderHeight * 0.4);
-            return { width, height };
-          },
-          aspectRatio: 16/9,
-        };
-
         await html5QrCode.start(
           { facingMode: "environment" },
-          config,
-          qrCodeSuccessCallback,
-          () => {} // ละเว้นเฟรมที่ยังไม่พบบาร์โค้ด
-        );
+          {
+            fps: 30,
+            qrbox: { width: 300, height: 150 },
+            aspectRatio: 16/9,
+          },
+          (decodedText) => {
+            if (hasScanned) return;
+            hasScanned = true;
+            playBeep();
 
-        setIsScanning(true);
-      } catch (err: unknown) {
-        console.error("Camera start error:", err);
-        setScannerError(
-          lang === "th"
-            ? "ไม่สามารถเปิดกล้องได้ กรุณาเปิดผ่าน Safari หรือ Chrome และอนุญาตสิทธิ์กล้อง"
-            : "Unable to access camera. Please check permissions."
+            try {
+              if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(() => {});
+              }
+            } catch {
+              // ignore
+            }
+
+            onScan(decodedText);
+            onClose();
+          },
+          () => {}
         );
-        setIsScanning(false);
+      } catch (err) {
+        console.error("Scanner init error:", err);
+        setErrorMessage("ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งานกล้อง");
       }
     };
 
-    startScanner();
+    initScanner();
 
     return () => {
       if (html5QrCode) {
@@ -139,77 +110,25 @@ export default function BarcodeScannerModal({
         }
       }
     };
-  }, [isOpen, onScan, onClose, lang]);
+  }, [isOpen, onScan, onClose]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
-      <div className="bg-[#121622] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+      <div style={{ width: "100%", maxWidth: "400px", background: "#222", borderRadius: "8px", overflow: "hidden", padding: "16px", color: "#fff" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+          <strong>สแกนบาร์โค้ดสินค้า</strong>
+          <button onClick={onClose} style={{ background: "red", color: "#fff", border: "none", padding: "4px 8px", cursor: "pointer" }}>ปิด</button>
+        </div>
         
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-500/10 text-[#0066FF]">
-              <Camera size={18} />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">
-                {lang === "th" ? "สแกนบาร์โค้ดลงตะกร้าทันที" : "Instant Barcode Scanner"}
-              </h2>
-              <p className="text-[11px] text-zinc-400">
-                {lang === "th" ? "ส่องกล้องไปที่บาร์โค้ดสินค้าได้เลย" : "Point camera at product barcode"}
-              </p>
-            </div>
+        <div id={divId} style={{ width: "100%", minHeight: "300px", background: "#000" }} />
+
+        {errorMessage && (
+          <div style={{ color: "orange", marginTop: "10px", fontSize: "14px", textAlign: "center" }}>
+            {errorMessage}
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white bg-zinc-800/80 rounded-xl transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Camera Viewport */}
-        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden min-h-[400px]">
-          <div id={divId} className="w-full h-full" />
-
-          {/* Laser Line */}
-          {isScanning && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-[85%] max-w-[340px] h-[150px] border-2 border-dashed border-red-500/80 rounded-2xl relative overflow-hidden flex items-center bg-red-500/5">
-                <div className="absolute w-full h-0.5 bg-red-500 shadow-[0_0_20px_#ff0000] animate-bounce" />
-              </div>
-            </div>
-          )}
-
-          {/* Error Screen */}
-          {scannerError && (
-            <div className="absolute inset-0 bg-[#121622] p-6 flex flex-col items-center justify-center text-center space-y-4">
-              <AlertCircle className="w-12 h-12 text-amber-500" />
-              <p className="text-xs text-zinc-300 max-w-xs">{scannerError}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-[#0066FF] text-white px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2"
-              >
-                <RefreshCw size={14} />
-                <span>{lang === "th" ? "ลองใหม่อีกครั้ง" : "Retry"}</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 bg-[#0A0D14] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
-          <span>{lang === "th" ? "ความเร็วสูงพิเศษ (High-Speed Auto-Detect)" : "High-Speed Auto-Detect"}</span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all"
-          >
-            {lang === "th" ? "ปิด" : "Cancel"}
-          </button>
-        </div>
-
+        )}
       </div>
     </div>
   );
