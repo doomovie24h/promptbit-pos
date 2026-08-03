@@ -1,12 +1,13 @@
 /**
- * @fileoverview Real Camera Barcode Scanner Component - Promptbit POS
+ * @fileoverview Barcode Scanner Modal - 7-Eleven POS Style (Auto-Scan)
  * @module components/BarcodeScannerModal
  */
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { X, ScanBarcode, Camera, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
+import { X, Camera, RefreshCw, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface BarcodeScannerModalProps {
@@ -20,152 +21,180 @@ export default function BarcodeScannerModal({
   isOpen,
   onClose,
   onScan,
-  lang = "th"
+  lang = "th",
 }: BarcodeScannerModalProps) {
-  const [manualCode, setManualCode] = useState("");
-  const [cameraActive, setCameraActive] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const divId = "interactive-barcode-scanner-viewport";
+
+  // ฟังก์ชันเล่นเสียงปี๊บแบบเซเว่น (Web Audio API)
+  const playBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); // ความถี่เสียงปี๊บ
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.12); // ดัง 0.12 วินาที
+    } catch (e) {
+      console.error("Audio error:", e);
+    }
+  };
 
   useEffect(() => {
-    if (isOpen) {
-      setManualCode("");
-      setErrorMessage(null);
-      startCamera();
-    } else {
-      stopCamera();
-    }
-    return () => {
-      stopCamera();
-    };
-  }, [isOpen]);
-
-  const startCamera = async () => {
-    try {
-      setCameraActive(true);
-      setErrorMessage(null);
-      const constraints = {
-        video: { facingMode: { ideal: "environment" } }
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+    if (!isOpen) {
+      // ปิดกล้องทันทีเมื่อปิด Modal
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current
+          .stop()
+          .catch((err) => console.error("Failed to stop scanner:", err));
       }
-    } catch (err) {
-      console.error("Camera access error:", err);
-      setCameraActive(false);
-      setErrorMessage(
-        lang === "th" 
-          ? "ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตสิทธิ์การใช้กล้อง หรือใช้การพิมพ์รหัสแทน" 
-          : "Camera access denied or unavailable. Please use manual entry."
-      );
+      setIsScanning(false);
+      return;
     }
-  };
 
-  const stopCamera = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-    setCameraActive(false);
-  };
+    setScannerError(null);
+    let html5QrCode: Html5Qrcode | null = null;
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualCode.trim()) return;
-    onScan(manualCode.trim());
-    toast.success(lang === "th" ? `สแกนบาร์โค้ดสำเร็จ: ${manualCode}` : `Barcode scanned: ${manualCode}`);
-    onClose();
-  };
+    const startScanner = async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300)); // รอ DOM render
+        
+        html5QrCode = new Html5Qrcode(divId);
+        scannerRef.current = html5QrCode;
+
+        const qrCodeSuccessCallback = (decodedText: string) => {
+          playBeep(); // เล่นเสียงปี๊บ
+          toast.success(lang === "th" ? `สแกนสำเร็จ: ${decodedText}` : `Scanned: ${decodedText}`);
+          
+          // หยุดกล้องชั่วคราวก่อนส่งค่ากลับ
+          if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().then(() => {
+              onScan(decodedText);
+              onClose();
+            }).catch(() => {
+              onScan(decodedText);
+              onClose();
+            });
+          } else {
+            onScan(decodedText);
+            onClose();
+          }
+        };
+
+        const config = {
+          fps: 20, // เฟรมเรตสูงเพื่อให้จับภาพได้ไวทันที
+          qrbox: { width: 280, height: 140 }, // กรอบสแกนบาร์โค้ดแนวนอน
+          aspectRatio: 1.0,
+        };
+
+        // เริ่มเปิดกล้องหลังจาก (ใช้กล้องหลังมือถือเป็นหลักถ้ามี)
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          qrCodeSuccessCallback,
+          () => {
+            // ละเว้น error ระหว่างเฟรมที่ยังมองไม่เห็นบาร์โค้ด เพื่อไม่ให้ log รก
+          }
+        );
+
+        setIsScanning(true);
+      } catch (err: unknown) {
+        console.error("Camera start error:", err);
+        setScannerError(
+          lang === "th"
+            ? "ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้งานกล้องใน Browser"
+            : "Unable to access camera. Please check permissions."
+        );
+        setIsScanning(false);
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch((err) => console.error("Cleanup stop error:", err));
+      }
+    };
+  }, [isOpen, onScan, onClose, lang]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#121622] border border-blue-500/20 dark:border-blue-500/30 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+      <div className="bg-[#121622] border border-zinc-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col">
         
-        {/* Header */}
-        <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-blue-500/10 text-[#0066FF] dark:text-blue-400">
-              <ScanBarcode size={20} />
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-500/10 text-[#0066FF]">
+              <Camera size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-zinc-900 dark:text-white">
-                {lang === "th" ? "สแกนบาร์โค้ดผ่านกล้อง" : "Camera Barcode Scanner"}
+              <h2 className="text-sm font-bold text-white">
+                {lang === "th" ? "สแกนบาร์โค้ดชำระเงิน" : "Fast Barcode Scanner"}
               </h2>
-              <p className="text-xs text-zinc-500">
-                {lang === "th" ? "วางบาร์โค้ดให้อยู่ในกรอบ หรือพิมพ์รหัส" : "Align barcode in frame or type code"}
+              <p className="text-[11px] text-zinc-400">
+                {lang === "th" ? "วางบาร์โค้ดให้อยู่ในกรอบเพื่อสแกนออโต้" : "Align barcode inside the box"}
               </p>
             </div>
           </div>
           <button
-            onClick={() => { stopCamera(); onClose(); }}
-            className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 rounded-xl transition-colors"
+            onClick={onClose}
+            className="p-2 text-zinc-400 hover:text-white bg-zinc-800/80 rounded-xl transition-colors"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Camera Viewport */}
-        <div className="relative w-full h-64 bg-zinc-950 rounded-2xl overflow-hidden flex flex-col items-center justify-center border border-zinc-800 shadow-inner">
-          {cameraActive && !errorMessage ? (
-            <>
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                muted 
-                className="w-full h-full object-cover"
-              />
-              {/* Target Scan Box Overlay */}
-              <div className="absolute inset-x-12 inset-y-16 border-2 border-dashed border-[#0066FF] rounded-xl pointer-events-none flex items-center justify-center">
-                <div className="w-full h-0.5 bg-red-500/80 animate-pulse absolute" />
+        {/* Camera Viewport Area */}
+        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden min-h-[350px]">
+          <div id={divId} className="w-full h-full" />
+
+          {/* Laser Scanning Line Animation (7-Eleven POS Look) */}
+          {isScanning && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-[280px] h-[140px] border-2 border-dashed border-blue-500/60 rounded-2xl relative overflow-hidden flex items-center">
+                <div className="absolute w-full h-0.5 bg-red-500 shadow-[0_0_12px_#ff0000] animate-bounce" />
               </div>
-              <div className="absolute bottom-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-zinc-200">
-                กำลังสแกนผ่านกล้องมือถือ...
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-3 text-center p-6 text-zinc-400">
-              <AlertCircle size={32} className="text-amber-500" />
-              <p className="text-xs">{errorMessage || "กล้องถูกปิดใช้งาน"}</p>
+            </div>
+          )}
+
+          {/* Error State */}
+          {scannerError && (
+            <div className="absolute inset-0 bg-[#121622] p-6 flex flex-col items-center justify-center text-center space-y-4">
+              <AlertCircle className="w-12 h-12 text-amber-500" />
+              <p className="text-xs text-zinc-300 max-w-xs">{scannerError}</p>
               <button
-                onClick={startCamera}
-                className="px-4 py-2 bg-[#0066FF] text-white rounded-xl text-xs font-semibold flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                onClick={() => window.location.reload()}
+                className="bg-[#0066FF] text-white px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2"
               >
-                <RefreshCw size={14} /> <span>เปิดกล้องใหม่อีกครั้ง</span>
+                <RefreshCw size={14} />
+                <span>{lang === "th" ? "ลองใหม่อีกครั้ง" : "Retry"}</span>
               </button>
             </div>
           )}
         </div>
 
-        {/* Manual Input Fallback */}
-        <form onSubmit={handleManualSubmit} className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
-              {lang === "th" ? "หรือพิมพ์บาร์โค้ด / รหัสสินค้า" : "Or enter barcode manually"}
-            </label>
-            <input
-              type="text"
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              placeholder="เช่น 8850123456789"
-              className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:border-[#0066FF] transition-colors"
-              autoFocus
-            />
-          </div>
-
+        {/* Footer info */}
+        <div className="px-6 py-4 bg-[#0A0D14] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
+          <span>{lang === "th" ? "ระบบสแกนความเร็วสูง" : "High-speed Scanner"}</span>
           <button
-            type="submit"
-            className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2"
+            onClick={onClose}
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all"
           >
-            <CheckCircle2 size={16} />
-            <span>{lang === "th" ? "ยืนยันและเพิ่มสินค้า" : "Confirm and Add"}</span>
+            {lang === "th" ? "ปิดหน้าต่าง" : "Cancel"}
           </button>
-        </form>
+        </div>
 
       </div>
     </div>
