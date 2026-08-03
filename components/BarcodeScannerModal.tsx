@@ -1,5 +1,5 @@
 /**
- * @fileoverview Barcode Scanner Modal - Optimized for Distance & Auto-Focus
+ * @fileoverview Barcode Scanner Modal - Safe & Compatible Mobile Camera
  * @module components/BarcodeScannerModal
  */
 
@@ -28,7 +28,6 @@ export default function BarcodeScannerModal({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const divId = "interactive-barcode-scanner-viewport";
 
-  // ฟังก์ชันเล่นเสียงปี๊บเมื่อสแกนสำเร็จ
   const playBeep = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -89,7 +88,7 @@ export default function BarcodeScannerModal({
         };
 
         const config = {
-          fps: 25,
+          fps: 20,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const width = Math.floor(viewfinderWidth * 0.8);
             const height = Math.floor(viewfinderHeight * 0.35);
@@ -98,12 +97,9 @@ export default function BarcodeScannerModal({
           aspectRatio: 16/9,
         };
 
-        const constraints: MediaTrackConstraints = {
+        // ใช้ค่ามาตรฐานที่รองรับทั้ง iOS และ Android ป้องกันปัญหากล้องพัง/เปิดไม่ได้
+        const constraints = {
           facingMode: "environment",
-          width: { min: 1280, ideal: 1920, max: 2560 },
-          height: { min: 720, ideal: 1080, max: 1440 },
-          // @ts-expect-error - advanced focusMode is supported by modern mobile browsers
-          advanced: [{ focusMode: "continuous" }]
         };
 
         await html5QrCode.start(
@@ -115,34 +111,11 @@ export default function BarcodeScannerModal({
 
         setIsScanning(true);
       } catch (err: unknown) {
-        console.error("Camera start error with advanced constraints, falling back...", err);
-        
-        try {
-          if (html5QrCode) {
-            await html5QrCode.start(
-              { facingMode: "environment" },
-              { fps: 20, qrbox: { width: 300, height: 150 } },
-              (decodedText) => {
-                playBeep();
-                toast.success(`สแกนสำเร็จ: ${decodedText}`);
-                html5QrCode?.stop().then(() => {
-                  onScan(decodedText);
-                  onClose();
-                });
-              },
-              () => {}
-            );
-            setIsScanning(true);
-            return;
-          }
-        } catch (fallbackErr) {
-          console.error("Fallback camera error:", fallbackErr);
-        }
-
+        console.error("Camera start error:", err);
         setScannerError(
           lang === "th"
-            ? "ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้งานกล้องใน Browser"
-            : "Unable to access camera. Please check permissions."
+            ? "ไม่สามารถเปิดกล้องได้ กรุณาเปิดผ่าน Safari หรือ Chrome และอนุญาตการใช้งานกล้อง"
+            : "Unable to access camera. Please open in Safari/Chrome and allow permission."
         );
         setIsScanning(false);
       }
@@ -174,7 +147,7 @@ export default function BarcodeScannerModal({
                 {lang === "th" ? "สแกนบาร์โค้ดชำระเงิน" : "Fast Barcode Scanner"}
               </h2>
               <p className="text-[11px] text-zinc-400">
-                {lang === "th" ? "วางบาร์โค้ดให้อยู่ในกรอบ (ไม่ต้องจ่อใกล้เกินไป)" : "Align barcode inside the box"}
+                {lang === "th" ? "วางบาร์โค้ดให้อยู่ในกรอบ" : "Align barcode inside the box"}
               </p>
             </div>
           </div>
@@ -217,7 +190,7 @@ export default function BarcodeScannerModal({
 
         {/* Footer info */}
         <div className="px-6 py-4 bg-[#0A0D14] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
-          <span>{lang === "th" ? "ระบบโฟกัสอัตโนมัติความคมชัดสูง" : "High-Resolution Auto-Focus"}</span>
+          <span>{lang === "th" ? "ระบบสแกนบาร์โค้ดอัตโนมัติ" : "Auto Barcode Scanner"}</span>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all"
