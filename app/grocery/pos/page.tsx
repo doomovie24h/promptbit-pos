@@ -1,5 +1,5 @@
 /**
- * @fileoverview Grocery POS Screen (Connected with Central ReceiptModal & Dynamic Store Info)
+ * @fileoverview Grocery POS Screen - Bangkok Bank Theme & Hardware Integration (USB/Bluetooth)
  * @module app/grocery/pos/page
  */
 
@@ -26,7 +26,11 @@ import {
   Printer,
   Volume2,
   VolumeX,
-  ShoppingCart
+  ShoppingCart,
+  Bluetooth,
+  Usb,
+  Smartphone,
+  Monitor
 } from "lucide-react";
 import ReceiptModal, { ReceiptTransaction, StoreInfo } from "@/components/pos/ReceiptModal";
 
@@ -40,6 +44,7 @@ interface Product {
   price: number;
   stock: number;
   category: ProductCategory | string;
+  barcode?: string;
 }
 
 interface CartItem extends Product {
@@ -86,7 +91,7 @@ export default function GroceryPOS() {
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
   // Store & Business Info States
-  const [storeName, setStoreName] = useState<string>("Grocery POS");
+  const [storeName, setStoreName] = useState<string>("Bangkok Grocery POS");
   const [storeId, setStoreId] = useState<string>("");
   const [promptPayNumber, setPromptPayNumber] = useState<string>("");
   const [storeAddress, setStoreAddress] = useState<string>("");
@@ -98,9 +103,14 @@ export default function GroceryPOS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-  const [isMobileCartOpen, setIsMobileCartOpen] = useState<boolean>(false); // State สำหรับเปิดตะกร้าบนมือถือ/iPad
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState<boolean>(false);
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "PROMPTPAY" | "CREDIT">("CASH");
   const [receivedAmount, setReceivedAmount] = useState<string>("");
+  
+  // Hardware Connection States
+  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
+  const [isConnectingHardware, setIsConnectingHardware] = useState<boolean>(false);
+
   const [enabledMethods, setEnabledMethods] = useState({
     cash: true,
     promptpay: true,
@@ -135,6 +145,47 @@ export default function GroceryPOS() {
     }
   };
 
+  // Hardware Connect Handlers (USB Serial & Bluetooth)
+  const connectUsbDevice = async () => {
+    setIsConnectingHardware(true);
+    try {
+      if (!("serial" in navigator)) {
+        alert(language === "th" ? "เบราว์เซอร์นี้ไม่รองรับ Web Serial API (USB)" : "Web Serial API not supported");
+        return;
+      }
+      const port = await (navigator as unknown as { serial: { requestPort: () => Promise<unknown> } }).serial.requestPort();
+      if (port) {
+        setConnectedDevice("USB Serial Scanner/Printer");
+        alert(language === "th" ? "เชื่อมต่ออุปกรณ์ USB สำเร็จ" : "USB Device Connected Successfully");
+      }
+    } catch (err) {
+      console.error("USB Connection error:", err);
+    } finally {
+      setIsConnectingHardware(false);
+    }
+  };
+
+  const connectBluetoothDevice = async () => {
+    setIsConnectingHardware(true);
+    try {
+      if (!("bluetooth" in navigator)) {
+        alert(language === "th" ? "เบราว์เซอร์นี้ไม่รองรับ Web Bluetooth" : "Web Bluetooth API not supported");
+        return;
+      }
+      const device = await (navigator as unknown as { bluetooth: { requestDevice: (options: unknown) => Promise<{ name?: string }> } }).bluetooth.requestDevice({
+        acceptAllDevices: true,
+      });
+      if (device) {
+        setConnectedDevice(device.name || "Bluetooth Printer");
+        alert(language === "th" ? `เชื่อมต่อ ${device.name || "Bluetooth"} สำเร็จ` : "Bluetooth Connected Successfully");
+      }
+    } catch (err) {
+      console.error("Bluetooth Connection error:", err);
+    } finally {
+      setIsConnectingHardware(false);
+    }
+  };
+
   const fetchPOSData = async (): Promise<void> => {
     try {
       setIsLoadingData(true);
@@ -159,7 +210,7 @@ export default function GroceryPOS() {
           setStoreId(String(businessInfo.id || businessInfo.storeId));
         }
         if (businessInfo.storeName || businessInfo.name) {
-          setStoreName(businessInfo.storeName || businessInfo.name || "Grocery POS");
+          setStoreName(businessInfo.storeName || businessInfo.name || "Bangkok Grocery POS");
         }
         if (businessInfo.address) setStoreAddress(businessInfo.address);
         if (businessInfo.phone || businessInfo.phoneNumber || businessInfo.storePhone) {
@@ -201,7 +252,7 @@ export default function GroceryPOS() {
     if (!Array.isArray(products)) return [];
     return products.filter((p) => {
       const catName = typeof p.category === 'object' && p.category !== null ? p.category.name : (p.category || "ทั่วไป");
-      const matchesSearch = (p.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = (p.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || (p.barcode || "").includes(searchQuery);
       const matchesCategory = selectedCategory === "all" || catName === selectedCategory || (selectedCategory === "ทั่วไป" && catName === "ทั่วไป");
       return matchesSearch && matchesCategory;
     });
@@ -323,7 +374,7 @@ export default function GroceryPOS() {
       setCompletedTransaction(receiptPayload);
       setIsSubmitting(false);
       setIsPaymentModalOpen(false);
-      setIsMobileCartOpen(false); // ปิดตะกร้ามือถือด้วยหลังชำระเงินเสร็จ
+      setIsMobileCartOpen(false);
       setCart([]);
       setReceivedAmount("");
       setSelectedCustomer(null);
@@ -346,40 +397,39 @@ export default function GroceryPOS() {
     logoUrl: storeLogo,
   };
 
-  // คอมโพเนนต์ย่อยสำหรับเนื้อหาตะกร้าสินค้า (ใช้ร่วมกันทั้ง Desktop Sidebar และ Mobile Drawer)
   const renderCartContent = () => (
     <>
       <div className="flex justify-between items-center mb-3">
         <h2 className="font-semibold text-sm flex items-center gap-2">
-          <ShoppingBag className="text-emerald-500" size={18} />
+          <ShoppingBag className="text-[#0066FF]" size={18} />
           <span>{language === "th" ? "รายการสินค้าในตะกร้า" : "Current Order"}</span>
         </h2>
-        <span className="text-xs bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-md font-medium">
+        <span className="text-xs bg-[#0066FF]/15 text-[#0066FF] px-2 py-0.5 rounded-md font-medium">
           {cart.reduce((sum, item) => sum + item.quantity, 0)} {language === "th" ? "รายการ" : "items"}
         </span>
       </div>
 
       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-360px)] pr-1 flex-1">
         {cart.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 text-xs">
+          <div className="text-center py-16 text-zinc-400 text-xs">
             {language === "th" ? "ยังไม่มีสินค้าในตะกร้า" : "Cart is empty."}
           </div>
         ) : (
           cart.map((item) => (
-            <div key={item.id} className={`p-2.5 rounded-lg border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
+            <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between ${isDarkMode ? "bg-[#121214] border-zinc-800" : "bg-[#CCE0FF]/30 border-blue-100"}`}>
               <div className="flex-1 pr-2">
                 <p className="text-xs font-medium line-clamp-1">{item.name}</p>
-                <p className="text-xs text-emerald-500 font-mono font-semibold mt-0.5">฿{item.price * item.quantity}</p>
+                <p className="text-xs text-[#0066FF] font-mono font-semibold mt-0.5">฿{item.price * item.quantity}</p>
               </div>
               <div className="flex items-center gap-1.5">
-                <button onClick={() => updateQuantity(item.id, -1)} className="p-1 rounded-md bg-zinc-700/30 hover:bg-zinc-700/60 cursor-pointer">
+                <button onClick={() => updateQuantity(item.id, -1)} className="p-1 rounded-md bg-[#0066FF]/10 text-[#0066FF] hover:bg-[#0066FF]/20 cursor-pointer">
                   <Minus size={13} />
                 </button>
                 <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                <button onClick={() => updateQuantity(item.id, 1)} className="p-1 rounded-md bg-zinc-700/30 hover:bg-zinc-700/60 cursor-pointer">
+                <button onClick={() => updateQuantity(item.id, 1)} className="p-1 rounded-md bg-[#0066FF]/10 text-[#0066FF] hover:bg-[#0066FF]/20 cursor-pointer">
                   <Plus size={13} />
                 </button>
-                <button onClick={() => removeFromCart(item.id)} className="p-1 rounded-md text-red-400 hover:bg-red-500/10 cursor-pointer ml-1">
+                <button onClick={() => removeFromCart(item.id)} className="p-1 rounded-md text-red-500 hover:bg-red-500/10 cursor-pointer ml-1">
                   <Trash2 size={13} />
                 </button>
               </div>
@@ -388,10 +438,10 @@ export default function GroceryPOS() {
         )}
       </div>
 
-      <div className="space-y-3 pt-3 border-t border-zinc-800 mt-auto">
+      <div className="space-y-3 pt-3 border-t border-zinc-800/40 mt-auto">
         <div className="flex justify-between items-center">
-          <span className="text-xs font-medium text-zinc-400">{language === "th" ? "ยอดรวมสุทธิ" : "Subtotal"}</span>
-          <span className="text-2xl font-bold text-emerald-500 font-mono">฿{totalAmount.toLocaleString()}</span>
+          <span className="text-xs font-medium text-zinc-500">{language === "th" ? "ยอดรวมสุทธิ" : "Subtotal"}</span>
+          <span className="text-2xl font-bold text-[#0066FF] font-mono">฿{totalAmount.toLocaleString()}</span>
         </div>
 
         <button
@@ -399,9 +449,9 @@ export default function GroceryPOS() {
           disabled={cart.length === 0}
           onClick={() => {
             setIsPaymentModalOpen(true);
-            setIsMobileCartOpen(false); // ปิด Drawer บนมือถือเมื่อกดชำระเงิน
+            setIsMobileCartOpen(false);
           }}
-          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+          className="w-full bg-[#0066FF] hover:bg-[#0052cc] text-white font-semibold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
         >
           <CreditCard size={17} />
           <span>{language === "th" ? "ชำระเงิน" : "Proceed to Checkout"}</span>
@@ -411,34 +461,44 @@ export default function GroceryPOS() {
   );
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans transition-colors ${isDarkMode ? "bg-zinc-950 text-zinc-100" : "bg-slate-50 text-slate-900"}`}>
-      {/* HEADER */}
-      <header className={`px-6 py-4 border-b flex justify-between items-center print:hidden ${isDarkMode ? "bg-zinc-900 border-zinc-800" : "bg-white border-slate-200"}`}>
+    <div className={`min-h-screen flex flex-col font-sans transition-colors ${isDarkMode ? "bg-[#09090b] text-zinc-100" : "bg-[#F4F7FE] text-slate-900"}`}>
+      {/* HEADER - Bangkok Bank Styling */}
+      <header className={`px-6 py-4 border-b flex justify-between items-center print:hidden sticky top-0 z-30 shadow-xs ${isDarkMode ? "bg-[#121214] border-zinc-800" : "bg-white border-blue-100"}`}>
         <div className="flex items-center gap-3">
-          <div className="bg-emerald-600 text-white p-2 rounded-xl">
+          <div className="bg-[#0066FF] text-white p-2.5 rounded-xl shadow-md">
             <Store size={22} />
           </div>
           <div>
-            <h1 className="text-base font-semibold">{storeName}</h1>
-            <p className="text-xs text-zinc-400">{language === "th" ? "ระบบขายหน้าร้านอัตโนมัติ" : "Point of Sale System"}</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold">{storeName}</h1>
+              {connectedDevice && (
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+                  Connected: {connectedDevice}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-zinc-400 flex items-center gap-1 mt-0.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              {language === "th" ? "ระบบหน้าร้านธนาคาร (Bangkok Bank Standard)" : "BBL POS Standard System"}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {completedTransaction && (
             <button
               onClick={() => setIsReceiptModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer bg-[#0066FF]/10 text-[#0066FF] border-[#0066FF]/20 hover:bg-[#0066FF]/20"
             >
               <Printer size={15} />
-              <span>{language === "th" ? "พิมพ์ใบเสร็จล่าสุด" : "Print Last Receipt"}</span>
+              <span className="hidden sm:inline">{language === "th" ? "พิมพ์ใบเสร็จล่าสุด" : "Print Receipt"}</span>
             </button>
           )}
 
           <button
             onClick={() => setLanguage(language === "th" ? "en" : "th")}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-              isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+              isDarkMode ? "bg-[#1a1a1e] border-zinc-700 text-zinc-200 hover:bg-zinc-800" : "bg-white border-blue-100 text-slate-700 hover:bg-slate-50"
             }`}
           >
             <Globe size={15} />
@@ -447,8 +507,8 @@ export default function GroceryPOS() {
 
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className={`p-2 rounded-lg border transition-colors cursor-pointer ${
-              isDarkMode ? "bg-zinc-800 border-zinc-700 text-amber-400 hover:bg-zinc-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+              isDarkMode ? "bg-[#1a1a1e] border-zinc-700 text-amber-400 hover:bg-zinc-800" : "bg-white border-blue-100 text-slate-700 hover:bg-slate-50"
             }`}
           >
             {isDarkMode ? <Sun size={17} /> : <Moon size={17} />}
@@ -456,8 +516,8 @@ export default function GroceryPOS() {
 
           <button
             onClick={() => setIsSettingsModalOpen(true)}
-            className={`p-2 rounded-lg border transition-colors cursor-pointer ${
-              isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+              isDarkMode ? "bg-[#1a1a1e] border-zinc-700 text-zinc-300 hover:bg-zinc-800" : "bg-white border-blue-100 text-slate-700 hover:bg-slate-50"
             }`}
           >
             <Settings size={17} />
@@ -465,32 +525,32 @@ export default function GroceryPOS() {
         </div>
       </header>
 
-      {/* MAIN CONTAINER (Responsive Grid: Desktop 3 columns / Mobile & Tablet 1 column with padding bottom for floating cart) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 pb-24 lg:pb-6 print:hidden">
+      {/* MAIN CONTAINER - 70/30 Grid Layout for Desktop & Fluid Mobile App UI */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 sm:p-6 pb-28 lg:pb-6 print:hidden max-w-[1600px] mx-auto w-full">
         
-        {/* PRODUCT CATALOG (2 columns on desktop) */}
+        {/* PRODUCT CATALOG (70% width on Desktop / 2 Cols on Mobile) */}
         <div className="lg:col-span-2 flex flex-col space-y-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className={`flex-1 flex items-center px-3.5 py-2.5 rounded-xl border ${isDarkMode ? "bg-zinc-900 border-zinc-800" : "bg-white border-slate-200"}`}>
+            <div className={`flex-1 flex items-center px-3.5 py-2.5 rounded-2xl border ${isDarkMode ? "bg-[#121214] border-zinc-800" : "bg-white border-blue-100 shadow-xs"}`}>
               <Search size={17} className="text-zinc-400 mr-2" />
               <input
                 type="text"
-                placeholder={language === "th" ? "ค้นหาสินค้าจากสต็อก..." : "Search products..."}
+                placeholder={language === "th" ? "ค้นหาสินค้าหรือสแกนบาร์โค้ด..." : "Search products or scan barcode..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-transparent border-none focus:outline-none text-xs"
               />
             </div>
             
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               {["all", "ทั่วไป", "drinks", "food", "fresh", "condiment"].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-2.5 rounded-xl text-xs font-medium capitalize whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-medium capitalize whitespace-nowrap transition-all cursor-pointer ${
                     selectedCategory === cat
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : isDarkMode ? "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                      ? "bg-[#0066FF] text-white shadow-md shadow-blue-500/20"
+                      : isDarkMode ? "bg-[#121214] border border-zinc-800 text-zinc-300 hover:bg-zinc-800" : "bg-white border border-blue-100 text-slate-700 hover:bg-blue-50/50"
                   }`}
                 >
                   {cat}
@@ -501,28 +561,28 @@ export default function GroceryPOS() {
 
           {isLoadingData ? (
             <div className="flex flex-col items-center justify-center h-64 space-y-3">
-              <Loader2 className="animate-spin text-emerald-500" size={28} />
+              <Loader2 className="animate-spin text-[#0066FF]" size={28} />
               <p className="text-xs text-zinc-400">{language === "th" ? "กำลังโหลดข้อมูลสินค้า..." : "Loading products..."}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto max-h-[calc(100vh-220px)] pr-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 overflow-y-auto max-h-[calc(100vh-240px)] pr-1">
               {filteredProducts.map((p) => {
                 const catName = typeof p.category === 'object' && p.category !== null ? p.category.name : (p.category || "ทั่วไป");
                 return (
                   <div
                     key={p.id}
                     onClick={() => addToCart(p)}
-                    className={`p-4 rounded-xl border flex flex-col justify-between transition-all cursor-pointer group ${
+                    className={`p-4 rounded-2xl border flex flex-col justify-between transition-all cursor-pointer group ${
                       p.stock <= 0 ? "opacity-40 grayscale cursor-not-allowed" : ""
-                    } ${isDarkMode ? "bg-zinc-900 border-zinc-800 hover:border-emerald-500/40" : "bg-white border-slate-200 hover:border-emerald-500/40 shadow-xs"}`}
+                    } ${isDarkMode ? "bg-[#121214] border-zinc-800/80 hover:border-[#0066FF]/60 hover:shadow-lg hover:shadow-blue-500/5" : "bg-white border-blue-100/80 hover:border-[#0066FF]/50 shadow-xs hover:shadow-md"}`}
                   >
                     <div>
-                      <span className="text-[10px] uppercase font-semibold text-emerald-500 tracking-wider">{catName}</span>
-                      <h3 className="font-medium text-xs mt-1.5 line-clamp-2 group-hover:text-emerald-400 transition-colors">{p.name}</h3>
+                      <span className="text-[10px] uppercase font-bold text-[#0066FF] tracking-wider bg-[#0066FF]/10 px-2 py-0.5 rounded-md">{catName}</span>
+                      <h3 className="font-semibold text-xs mt-2 line-clamp-2 group-hover:text-[#0066FF] transition-colors">{p.name}</h3>
                     </div>
                     <div className="flex justify-between items-end mt-4">
-                      <span className="text-base font-bold text-emerald-500 font-mono">฿{p.price}</span>
-                      <span className={`text-[11px] ${p.stock > 0 ? "text-zinc-400" : "text-red-400 font-medium"}`}>
+                      <span className="text-base font-bold text-[#0066FF] font-mono">฿{p.price}</span>
+                      <span className={`text-[10px] font-medium ${p.stock > 0 ? "text-zinc-400" : "text-red-400"}`}>
                         {language === "th" ? `คงเหลือ ${p.stock}` : `Stock: ${p.stock}`}
                       </span>
                     </div>
@@ -533,17 +593,17 @@ export default function GroceryPOS() {
           )}
         </div>
 
-        {/* CART SUMMARY (Desktop Sidebar) */}
-        <div className={`hidden lg:flex rounded-xl border p-4 flex-col justify-between ${isDarkMode ? "bg-zinc-900 border-zinc-800" : "bg-white border-slate-200 shadow-xs"}`}>
+        {/* CART SUMMARY (Desktop Sidebar - 30% width) */}
+        <div className={`hidden lg:flex rounded-2xl border p-4 flex-col justify-between shadow-sm ${isDarkMode ? "bg-[#121214] border-zinc-800" : "bg-white border-blue-100"}`}>
           {renderCartContent()}
         </div>
 
       </div>
 
-      {/* ================= MOBILE & TABLET: FLOATING CART BAR ================= */}
-      <div className={`lg:hidden fixed bottom-0 inset-x-0 border-t p-4 shadow-2xl flex items-center justify-between z-40 transition-colors ${isDarkMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
+      {/* MOBILE & TABLET: APP-LIKE FLOATING BAR */}
+      <div className={`lg:hidden fixed bottom-0 inset-x-0 border-t p-4 shadow-2xl flex items-center justify-between z-40 transition-colors ${isDarkMode ? "bg-[#121214] border-zinc-800 text-white" : "bg-white border-blue-100 text-slate-900"}`}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center relative shadow-md">
+          <div className="w-11 h-11 rounded-2xl bg-[#0066FF] text-white flex items-center justify-center relative shadow-md">
             <ShoppingCart size={20} />
             <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">
               {cart.reduce((sum, item) => sum + item.quantity, 0)}
@@ -551,29 +611,29 @@ export default function GroceryPOS() {
           </div>
           <div>
             <p className="text-[10px] text-zinc-400">{language === "th" ? "ยอดรวมทั้งหมด" : "Total Amount"}</p>
-            <p className="text-sm font-bold text-emerald-500 font-mono">฿{totalAmount.toLocaleString()}</p>
+            <p className="text-sm font-bold text-[#0066FF] font-mono">฿{totalAmount.toLocaleString()}</p>
           </div>
         </div>
         <button
           onClick={() => setIsMobileCartOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-semibold text-xs shadow-md transition-colors"
+          className="bg-[#0066FF] hover:bg-[#0052cc] text-white px-5 py-3 rounded-2xl font-semibold text-xs shadow-lg transition-colors cursor-pointer"
         >
           {language === "th" ? "ดูตะกร้าสินค้า" : "View Cart"} ({cart.reduce((sum, item) => sum + item.quantity, 0)})
         </button>
       </div>
 
-      {/* ================= MOBILE & TABLET: SLIDE-UP CART DRAWER ================= */}
+      {/* MOBILE SLIDE-UP CART DRAWER */}
       {isMobileCartOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex flex-col justify-end animate-fade-in print:hidden">
-          <div className={`rounded-t-3xl max-h-[85vh] flex flex-col p-5 border-t shadow-2xl ${isDarkMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
-            <div className="flex justify-between items-center pb-3 border-b border-zinc-800 mb-3">
+          <div className={`rounded-t-3xl max-h-[85vh] flex flex-col p-5 border-t shadow-2xl ${isDarkMode ? "bg-[#121214] border-zinc-800 text-white" : "bg-white border-blue-100 text-slate-900"}`}>
+            <div className="flex justify-between items-center pb-3 border-b border-zinc-800/40 mb-3">
               <h2 className="font-semibold text-sm flex items-center gap-2">
-                <ShoppingBag className="text-emerald-500" size={18} />
+                <ShoppingBag className="text-[#0066FF]" size={18} />
                 <span>{language === "th" ? "ตะกร้าสินค้าของคุณ" : "Your Cart"}</span>
               </h2>
               <button
                 onClick={() => setIsMobileCartOpen(false)}
-                className={`p-1.5 rounded-lg cursor-pointer ${isDarkMode ? "bg-zinc-800 text-zinc-400 hover:text-white" : "bg-slate-100 text-slate-600"}`}
+                className={`p-1.5 rounded-xl cursor-pointer ${isDarkMode ? "bg-zinc-800 text-zinc-400 hover:text-white" : "bg-slate-100 text-slate-600"}`}
               >
                 <X size={17} />
               </button>
@@ -581,25 +641,25 @@ export default function GroceryPOS() {
             
             <div className="space-y-2 overflow-y-auto max-h-[50vh] pr-1 flex-1">
               {cart.length === 0 ? (
-                <div className="text-center py-12 text-zinc-500 text-xs">
+                <div className="text-center py-12 text-zinc-400 text-xs">
                   {language === "th" ? "ยังไม่มีสินค้าในตะกร้า" : "Cart is empty."}
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div key={item.id} className={`p-2.5 rounded-lg border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
+                  <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-blue-50/50 border-blue-100"}`}>
                     <div className="flex-1 pr-2">
                       <p className="text-xs font-medium line-clamp-1">{item.name}</p>
-                      <p className="text-xs text-emerald-500 font-mono font-semibold mt-0.5">฿{item.price * item.quantity}</p>
+                      <p className="text-xs text-[#0066FF] font-mono font-semibold mt-0.5">฿{item.price * item.quantity}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => updateQuantity(item.id, -1)} className="p-1 rounded-md bg-zinc-700/30 hover:bg-zinc-700/60 cursor-pointer">
+                      <button onClick={() => updateQuantity(item.id, -1)} className="p-1 rounded-md bg-[#0066FF]/10 text-[#0066FF] cursor-pointer">
                         <Minus size={13} />
                       </button>
                       <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, 1)} className="p-1 rounded-md bg-zinc-700/30 hover:bg-zinc-700/60 cursor-pointer">
+                      <button onClick={() => updateQuantity(item.id, 1)} className="p-1 rounded-md bg-[#0066FF]/10 text-[#0066FF] cursor-pointer">
                         <Plus size={13} />
                       </button>
-                      <button onClick={() => removeFromCart(item.id)} className="p-1 rounded-md text-red-400 hover:bg-red-500/10 cursor-pointer ml-1">
+                      <button onClick={() => removeFromCart(item.id)} className="p-1 rounded-md text-red-500 cursor-pointer ml-1">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -608,10 +668,10 @@ export default function GroceryPOS() {
               )}
             </div>
 
-            <div className="space-y-3 pt-4 border-t border-zinc-800 mt-3">
+            <div className="space-y-3 pt-4 border-t border-zinc-800/40 mt-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-medium text-zinc-400">{language === "th" ? "ยอดรวมสุทธิ" : "Subtotal"}</span>
-                <span className="text-2xl font-bold text-emerald-500 font-mono">฿{totalAmount.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-[#0066FF] font-mono">฿{totalAmount.toLocaleString()}</span>
               </div>
 
               <button
@@ -621,7 +681,7 @@ export default function GroceryPOS() {
                   setIsMobileCartOpen(false);
                   setIsPaymentModalOpen(true);
                 }}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+                className="w-full bg-[#0066FF] hover:bg-[#0052cc] text-white font-semibold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 shadow-lg"
               >
                 <CreditCard size={17} />
                 <span>{language === "th" ? "ชำระเงิน" : "Proceed to Checkout"}</span>
@@ -634,26 +694,26 @@ export default function GroceryPOS() {
       {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 print:hidden">
-          <div className={`w-full max-w-[400px] rounded-2xl border shadow-xl p-5 space-y-5 ${
-            isDarkMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-slate-200 text-slate-900"
+          <div className={`w-full max-w-[420px] rounded-3xl border shadow-2xl p-6 space-y-5 ${
+            isDarkMode ? "bg-[#121214] border-zinc-800 text-white" : "bg-white border-blue-100 text-slate-900"
           }`}>
             <div className="flex justify-between items-center">
               <h2 className="text-base font-semibold flex items-center gap-2">
-                <CreditCard className="text-emerald-500" size={20} />
+                <CreditCard className="text-[#0066FF]" size={20} />
                 <span>{t.receivePayment}</span>
               </h2>
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
-                className={`p-1.5 rounded-lg cursor-pointer ${isDarkMode ? "bg-zinc-800 text-zinc-400 hover:text-white" : "bg-slate-100 text-slate-500"}`}
+                className={`p-1.5 rounded-xl cursor-pointer ${isDarkMode ? "bg-zinc-800 text-zinc-400 hover:text-white" : "bg-slate-100 text-slate-500"}`}
                 disabled={isSubmitting}
               >
                 <X size={17} />
               </button>
             </div>
             
-            <div className="flex bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 justify-between items-center">
+            <div className="flex bg-[#0066FF]/10 border border-[#0066FF]/20 rounded-2xl p-4 justify-between items-center">
               <span className="text-xs font-medium">{t.totalToPay}</span>
-              <span className="text-2xl font-bold text-emerald-500 font-mono">฿{totalAmount.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-[#0066FF] font-mono">฿{totalAmount.toLocaleString()}</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -661,11 +721,11 @@ export default function GroceryPOS() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("CASH")}
-                  className={`py-2.5 px-2 rounded-lg text-xs font-medium flex flex-col items-center gap-1 border transition-colors cursor-pointer ${
-                    paymentMethod === "CASH" ? "bg-emerald-600 text-white border-emerald-600" : isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
+                  className={`py-3 px-2 rounded-2xl text-xs font-medium flex flex-col items-center gap-1.5 border transition-all cursor-pointer ${
+                    paymentMethod === "CASH" ? "bg-[#0066FF] text-white border-[#0066FF] shadow-md shadow-blue-500/20" : isDarkMode ? "bg-zinc-800/80 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
                   }`}
                 >
-                  <Banknote size={17} />
+                  <Banknote size={18} />
                   <span>{t.cash}</span>
                 </button>
               )}
@@ -673,11 +733,11 @@ export default function GroceryPOS() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("PROMPTPAY")}
-                  className={`py-2.5 px-2 rounded-lg text-xs font-medium flex flex-col items-center gap-1 border transition-colors cursor-pointer ${
-                    paymentMethod === "PROMPTPAY" ? "bg-emerald-600 text-white border-emerald-600" : isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
+                  className={`py-3 px-2 rounded-2xl text-xs font-medium flex flex-col items-center gap-1.5 border transition-all cursor-pointer ${
+                    paymentMethod === "PROMPTPAY" ? "bg-[#0066FF] text-white border-[#0066FF] shadow-md shadow-blue-500/20" : isDarkMode ? "bg-zinc-800/80 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
                   }`}
                 >
-                  <QrCode size={17} />
+                  <QrCode size={18} />
                   <span>{t.promptpay}</span>
                 </button>
               )}
@@ -685,11 +745,11 @@ export default function GroceryPOS() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("CREDIT")}
-                  className={`py-2.5 px-2 rounded-lg text-xs font-medium flex flex-col items-center gap-1 border transition-colors cursor-pointer ${
-                    paymentMethod === "CREDIT" ? "bg-emerald-600 text-white border-emerald-600" : isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
+                  className={`py-3 px-2 rounded-2xl text-xs font-medium flex flex-col items-center gap-1.5 border transition-all cursor-pointer ${
+                    paymentMethod === "CREDIT" ? "bg-[#0066FF] text-white border-[#0066FF] shadow-md shadow-blue-500/20" : isDarkMode ? "bg-zinc-800/80 border-zinc-700 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
                   }`}
                 >
-                  <CreditCard size={17} />
+                  <CreditCard size={18} />
                   <span>{language === "th" ? "เงินเชื่อ" : "Credit"}</span>
                 </button>
               )}
@@ -704,15 +764,15 @@ export default function GroceryPOS() {
                     value={receivedAmount}
                     onChange={(e) => setReceivedAmount(e.target.value)}
                     placeholder="0.00"
-                    className={`w-full px-3 py-2.5 rounded-lg border text-lg font-bold font-mono focus:outline-none focus:border-emerald-500 ${
+                    className={`w-full px-3.5 py-3 rounded-2xl border text-lg font-bold font-mono focus:outline-none focus:border-[#0066FF] ${
                       isDarkMode ? "bg-zinc-800 border-zinc-700 text-white" : "bg-slate-50 border-slate-200 text-slate-800"
                     }`}
                     autoFocus
                   />
                 </div>
-                <div className={`p-3 rounded-lg border flex justify-between items-center ${isDarkMode ? "bg-zinc-800 border-zinc-700" : "bg-slate-50 border-slate-200"}`}>
+                <div className={`p-3 rounded-xl border flex justify-between items-center ${isDarkMode ? "bg-zinc-800 border-zinc-700" : "bg-slate-50 border-slate-200"}`}>
                   <span className="text-xs font-medium">{language === "th" ? "เงินทอน" : "Change"}</span>
-                  <span className="text-xl font-bold text-emerald-500 font-mono">฿{changeAmount.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-[#0066FF] font-mono">฿{changeAmount.toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -720,9 +780,9 @@ export default function GroceryPOS() {
             {paymentMethod === "PROMPTPAY" && (
               <div className="flex flex-col items-center justify-center space-y-3 py-1">
                 {promptPayNumber ? (
-                  <div className="bg-white p-3 rounded-xl border flex flex-col items-center">
-                    <img src={promptPayQrUrl} alt="PromptPay QR" className="w-40 h-40 object-contain" />
-                    <span className="text-[11px] text-slate-500 mt-1.5 font-mono">PromptPay: {promptPayNumber}</span>
+                  <div className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col items-center">
+                    <img src={promptPayQrUrl} alt="PromptPay QR" className="w-44 h-44 object-contain" />
+                    <span className="text-[11px] text-slate-500 mt-2 font-mono font-semibold">PromptPay: {promptPayNumber}</span>
                   </div>
                 ) : (
                   <div className="text-center py-4 space-y-1">
@@ -742,7 +802,7 @@ export default function GroceryPOS() {
                     const found = customers.find((c) => String(c.id) === e.target.value);
                     setSelectedCustomer(found || null);
                   }}
-                  className={`w-full px-3 py-2.5 rounded-lg border text-xs font-medium focus:outline-none focus:border-emerald-500 ${
+                  className={`w-full px-3.5 py-3 rounded-2xl border text-xs font-medium focus:outline-none focus:border-[#0066FF] ${
                     isDarkMode ? "bg-zinc-800 border-zinc-700 text-white" : "bg-slate-50 border-slate-200 text-slate-800"
                   }`}
                 >
@@ -760,7 +820,7 @@ export default function GroceryPOS() {
               type="button"
               disabled={isSubmitting || (paymentMethod === "CREDIT" && !selectedCustomer)}
               onClick={handleCheckoutSubmit}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 shadow-lg"
+              className="w-full bg-[#0066FF] hover:bg-[#0052cc] text-white font-semibold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-40 shadow-lg"
             >
               {isSubmitting ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
               <span>{language === "th" ? "ยืนยันการชำระเงิน" : "Confirm Payment"}</span>
@@ -769,24 +829,66 @@ export default function GroceryPOS() {
         </div>
       )}
 
-      {/* POS SETTINGS MODAL */}
+      {/* POS SETTINGS & HARDWARE CONNECT MODAL */}
       {isSettingsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 print:hidden">
-          <div className={`w-full max-w-[400px] rounded-2xl border shadow-xl p-5 space-y-5 ${isDarkMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
+          <div className={`w-full max-w-[420px] rounded-3xl border shadow-2xl p-6 space-y-5 ${isDarkMode ? "bg-[#121214] border-zinc-800 text-white" : "bg-white border-blue-100 text-slate-900"}`}>
             <div className="flex justify-between items-center">
               <h2 className="text-base font-semibold flex items-center gap-2">
-                <Settings className="text-emerald-500" size={18} />
-                <span>{language === "th" ? "ตั้งค่าระบบ POS" : "POS Settings"}</span>
+                <Settings className="text-[#0066FF]" size={18} />
+                <span>{language === "th" ? "ตั้งค่าระบบ POS และฮาร์ดแวร์" : "POS & Hardware Settings"}</span>
               </h2>
-              <button onClick={() => setIsSettingsModalOpen(false)} className="p-1.5 rounded-lg cursor-pointer">
+              <button onClick={() => setIsSettingsModalOpen(false)} className="p-1.5 rounded-xl cursor-pointer">
                 <X size={17} />
               </button>
             </div>
             
             <div className="space-y-3">
-              <div className={`p-3.5 rounded-lg border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
+              <div className="text-xs font-semibold text-[#0066FF] uppercase tracking-wider mb-1">
+                {language === "th" ? "เชื่อมต่ออุปกรณ์ภายนอก (USB / Bluetooth)" : "Hardware Connection"}
+              </div>
+              
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-blue-50/50 border-blue-100"}`}>
                 <div className="flex items-center gap-3">
-                  {enabledMethods.soundEnabled ? <Volume2 className="text-emerald-500" size={18} /> : <VolumeX className="text-zinc-400" size={18} />}
+                  <Usb className="text-[#0066FF]" size={18} />
+                  <div>
+                    <p className="text-xs font-medium">{language === "th" ? "เครื่องสแกน/พิมพ์ผ่าน USB" : "USB Serial Device"}</p>
+                    <p className="text-[10px] text-zinc-400">{language === "th" ? "เชื่อมต่อพอร์ต Serial/USB" : "Connect via Web Serial API"}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={connectUsbDevice}
+                  disabled={isConnectingHardware}
+                  className="bg-[#0066FF] hover:bg-[#0052cc] text-white text-[11px] font-semibold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  {isConnectingHardware ? <Loader2 size={13} className="animate-spin" /> : (language === "th" ? "เชื่อมต่อ USB" : "Connect USB")}
+                </button>
+              </div>
+
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-blue-50/50 border-blue-100"}`}>
+                <div className="flex items-center gap-3">
+                  <Bluetooth className="text-[#0066FF]" size={18} />
+                  <div>
+                    <p className="text-xs font-medium">{language === "th" ? "เครื่องพิมพ์ Bluetooth" : "Bluetooth Printer"}</p>
+                    <p className="text-[10px] text-zinc-400">{language === "th" ? "เชื่อมต่อเครื่องพิมพ์ไร้สาย" : "Connect via Web Bluetooth"}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={connectBluetoothDevice}
+                  disabled={isConnectingHardware}
+                  className="bg-[#0066FF] hover:bg-[#0052cc] text-white text-[11px] font-semibold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  {isConnectingHardware ? <Loader2 size={13} className="animate-spin" /> : (language === "th" ? "เชื่อมต่อ BT" : "Connect BT")}
+                </button>
+              </div>
+
+              <div className="text-xs font-semibold text-[#0066FF] uppercase tracking-wider mt-4 mb-1">
+                {language === "th" ? "ตั้งค่าเสียงและระบบพิมพ์" : "General Settings"}
+              </div>
+
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
+                <div className="flex items-center gap-3">
+                  {enabledMethods.soundEnabled ? <Volume2 className="text-[#0066FF]" size={18} /> : <VolumeX className="text-zinc-400" size={18} />}
                   <div>
                     <p className="text-xs font-medium">{language === "th" ? "เสียงปี๊บเมื่อสแกนสินค้า" : "Scan Sound Effect"}</p>
                     <p className="text-[10px] text-zinc-400">{language === "th" ? "เล่นเสียงสั้นๆ เมื่อเลือกสินค้า" : "Play beep sound on selection"}</p>
@@ -796,23 +898,23 @@ export default function GroceryPOS() {
                   type="checkbox"
                   checked={enabledMethods.soundEnabled}
                   onChange={(e) => setEnabledMethods((prev) => ({ ...prev, soundEnabled: e.target.checked }))}
-                  className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                  className="w-4 h-4 accent-[#0066FF] cursor-pointer"
                 />
               </div>
 
-              <div className={`p-3.5 rounded-lg border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${isDarkMode ? "bg-zinc-800/60 border-zinc-700/60" : "bg-slate-50 border-slate-200"}`}>
                 <div className="flex items-center gap-3">
-                  <Printer className="text-emerald-500" size={18} />
+                  <Printer className="text-[#0066FF]" size={18} />
                   <div>
                     <p className="text-xs font-medium">{language === "th" ? "พิมพ์ใบเสร็จอัตโนมัติ" : "Auto Print Receipt"}</p>
-                    <p className="text-[10px] text-zinc-400">{language === "th" ? "พิมพ์ใบเสร็จทันทีหลังชำระเงิน" : "Print receipt automatically after checkout"}</p>
+                    <p className="text-[10px] text-zinc-400">{language === "th" ? "พิมพ์ใบเสร็จทันทีหลังชำระเงิน" : "Print receipt automatically"}</p>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={enabledMethods.autoPrint}
                   onChange={(e) => setEnabledMethods((prev) => ({ ...prev, autoPrint: e.target.checked }))}
-                  className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                  className="w-4 h-4 accent-[#0066FF] cursor-pointer"
                 />
               </div>
             </div>
