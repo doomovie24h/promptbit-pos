@@ -1,5 +1,5 @@
 /**
- * @fileoverview Barcode Scanner Modal - Crash-proof & In-App Browser Safe
+ * @fileoverview High-Speed Auto-Scan Barcode Modal (Direct to Cart)
  * @module components/BarcodeScannerModal
  */
 
@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { X, Camera, RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
+import { X, Camera, RefreshCw, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface BarcodeScannerModalProps {
@@ -28,6 +28,7 @@ export default function BarcodeScannerModal({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const divId = "interactive-barcode-scanner-viewport";
 
+  // เสียงปี๊บเมื่อสแกนโดน
   const playBeep = () => {
     try {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -58,7 +59,7 @@ export default function BarcodeScannerModal({
             scannerRef.current.stop().catch(() => {});
           }
         } catch {
-          // ignore cleanup errors
+          // ignore
         }
       }
       setIsScanning(false);
@@ -67,15 +68,14 @@ export default function BarcodeScannerModal({
 
     setScannerError(null);
     let html5QrCode: Html5Qrcode | null = null;
+    let hasScanned = false;
 
     const startScanner = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         
         html5QrCode = new Html5Qrcode(divId);
         scannerRef.current = html5QrCode;
-
-        let hasScanned = false;
 
         const qrCodeSuccessCallback = (decodedText: string) => {
           if (hasScanned) return;
@@ -84,24 +84,24 @@ export default function BarcodeScannerModal({
           playBeep();
           toast.success(lang === "th" ? `สแกนสำเร็จ: ${decodedText}` : `Scanned: ${decodedText}`);
 
-          // ปิดกล้องและส่งค่าทันที ป้องกันหน้าจอแครชในมือถือ
           try {
             if (html5QrCode && html5QrCode.isScanning) {
               html5QrCode.stop().catch(() => {});
             }
           } catch {
-            // ignore stop error
+            // ignore
           }
 
+          // ส่งบาร์โค้ดตรงไปที่ระบบตะกร้าทันที
           onScan(decodedText);
           onClose();
         };
 
         const config = {
-          fps: 20,
+          fps: 30, // เร่งความเร็วเฟรมเรตสูงสุดเพื่อให้จับภาพได้ทันที
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const width = Math.floor(viewfinderWidth * 0.85);
-            const height = Math.floor(viewfinderHeight * 0.35);
+            const height = Math.floor(viewfinderHeight * 0.4);
             return { width, height };
           },
           aspectRatio: 16/9,
@@ -111,7 +111,7 @@ export default function BarcodeScannerModal({
           { facingMode: "environment" },
           config,
           qrCodeSuccessCallback,
-          () => {}
+          () => {} // ละเว้นเฟรมที่ยังไม่พบบาร์โค้ด
         );
 
         setIsScanning(true);
@@ -119,8 +119,8 @@ export default function BarcodeScannerModal({
         console.error("Camera start error:", err);
         setScannerError(
           lang === "th"
-            ? "ไม่สามารถเปิดกล้องได้ กรุณาเปิดผ่าน Safari หรือ Chrome (ห้ามเปิดผ่านแอปแชท)"
-            : "Unable to access camera. Please open in Safari/Chrome."
+            ? "ไม่สามารถเปิดกล้องได้ กรุณาเปิดผ่าน Safari หรือ Chrome และอนุญาตสิทธิ์กล้อง"
+            : "Unable to access camera. Please check permissions."
         );
         setIsScanning(false);
       }
@@ -144,10 +144,10 @@ export default function BarcodeScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
       <div className="bg-[#121622] border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col">
         
-        {/* Modal Header */}
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-500/10 text-[#0066FF]">
@@ -155,10 +155,10 @@ export default function BarcodeScannerModal({
             </div>
             <div>
               <h2 className="text-sm font-bold text-white">
-                {lang === "th" ? "สแกนบาร์โค้ดชำระเงิน" : "Fast Barcode Scanner"}
+                {lang === "th" ? "สแกนบาร์โค้ดลงตะกร้าทันที" : "Instant Barcode Scanner"}
               </h2>
               <p className="text-[11px] text-zinc-400">
-                {lang === "th" ? "วางบาร์โค้ดให้อยู่ในกรอบ" : "Align barcode inside the box"}
+                {lang === "th" ? "ส่องกล้องไปที่บาร์โค้ดสินค้าได้เลย" : "Point camera at product barcode"}
               </p>
             </div>
           </div>
@@ -170,39 +170,27 @@ export default function BarcodeScannerModal({
           </button>
         </div>
 
-        {/* Camera Viewport Area */}
-        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden min-h-[380px]">
+        {/* Camera Viewport */}
+        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden min-h-[400px]">
           <div id={divId} className="w-full h-full" />
 
-          {/* Laser Scanning Line Animation */}
+          {/* Laser Line */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-[85%] max-w-[340px] h-[140px] border-2 border-dashed border-blue-500/70 rounded-2xl relative overflow-hidden flex items-center bg-blue-500/5">
-                <div className="absolute w-full h-0.5 bg-red-500 shadow-[0_0_15px_#ff0000] animate-bounce" />
+              <div className="w-[85%] max-w-[340px] h-[150px] border-2 border-dashed border-red-500/80 rounded-2xl relative overflow-hidden flex items-center bg-red-500/5">
+                <div className="absolute w-full h-0.5 bg-red-500 shadow-[0_0_20px_#ff0000] animate-bounce" />
               </div>
             </div>
           )}
 
-          {/* Error State */}
+          {/* Error Screen */}
           {scannerError && (
             <div className="absolute inset-0 bg-[#121622] p-6 flex flex-col items-center justify-center text-center space-y-4">
               <AlertCircle className="w-12 h-12 text-amber-500" />
               <p className="text-xs text-zinc-300 max-w-xs">{scannerError}</p>
-              
-              {/* แนะนำให้เปิดใน Browser ภายนอก */}
-              <button
-                onClick={() => {
-                  window.open(window.location.href, "_blank");
-                }}
-                className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2"
-              >
-                <ExternalLink size={14} />
-                <span>{lang === "th" ? "เปิดใน Safari / Chrome" : "Open in Browser"}</span>
-              </button>
-
               <button
                 onClick={() => window.location.reload()}
-                className="bg-[#0066FF] text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2"
+                className="bg-[#0066FF] text-white px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2"
               >
                 <RefreshCw size={14} />
                 <span>{lang === "th" ? "ลองใหม่อีกครั้ง" : "Retry"}</span>
@@ -211,16 +199,14 @@ export default function BarcodeScannerModal({
           )}
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <div className="px-6 py-4 bg-[#0A0D14] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
-          <span className="text-[11px] text-amber-400">
-            {lang === "th" ? "💡 แนะนำ: เปิดผ่าน Safari หรือ Chrome เท่านั้น" : "💡 Tip: Use Safari or Chrome"}
-          </span>
+          <span>{lang === "th" ? "ความเร็วสูงพิเศษ (High-Speed Auto-Detect)" : "High-Speed Auto-Detect"}</span>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all"
           >
-            {lang === "th" ? "ปิดหน้าต่าง" : "Cancel"}
+            {lang === "th" ? "ปิด" : "Cancel"}
           </button>
         </div>
 
