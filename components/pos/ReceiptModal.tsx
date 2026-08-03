@@ -1,12 +1,12 @@
 /**
- * @fileoverview Standard Receipt Modal Component for Promptbit POS (Mixue Receipt Style)
+ * @fileoverview Standard Convenience Store Receipt Modal Component for Promptbit POS
  * @module components/pos/ReceiptModal
  */
 
 "use client";
 
 import React from "react";
-import { X, Printer, FileText, Download } from "lucide-react";
+import { X, Printer, FileText, Check, Download } from "lucide-react";
 import { toPng } from "html-to-image";
 
 export interface ReceiptItem {
@@ -54,6 +54,20 @@ interface ReceiptModalProps {
   storeInfo: StoreInfo;
   isDarkMode?: boolean;
 }
+
+const CODE_39_MAP: Record<string, string> = {
+  '0': 'nnwwnwnnw', '1': 'wnnwnnnnw', '2': 'nnwwnnnnw', '3': 'wnwwnnnnn',
+  '4': 'nnnwwnnnw', '5': 'wnnwwnnnn', '6': 'nnnwwnnnn', '7': 'nnnwnwnnw',
+  '8': 'wnnwnwnnn', '9': 'nnnwnwnnn', 'A': 'wnnnnwnnw', 'B': 'nnwnnwnnw',
+  'C': 'wnwnnwnnn', 'D': 'nnnnwwnnw', 'E': 'wnnnwwnnn', 'F': 'nnwnwwnnn',
+  'G': 'nnnnnwwnw', 'H': 'wnnnnwwnn', 'I': 'nnwnnwwnn', 'J': 'nnnnwwwnn',
+  'K': 'wnnnnnnww', 'L': 'nnwnnnnww', 'M': 'wnwnnnnwn', 'N': 'nnnnwnnww',
+  'O': 'wnnnwnnwn', 'P': 'nnwnwnnwn', 'Q': 'nnnnnnwww', 'R': 'nnnnnnwwn',
+  'S': 'nnwnnnwwn', 'T': 'nnnnwnwwn', 'U': 'wwnnnnnnw', 'V': 'nwwnnnnnw',
+  'W': 'wwwnnnnnn', 'X': 'nwnnwnnnw', 'Y': 'wwnnwnnnn', 'Z': 'nwnnwnnnn',
+  '-': 'nwnnnnwnw', '.': 'wwnnnnwnn', ' ': 'nwwnnnwnn', '$': 'nnwnwnwnn',
+  '/': 'nnwnnwnwn', '+': 'nnwnwnwnn', '%': 'nnnwnwnwn', '*': 'nwnnwnnnn'
+};
 
 export default function ReceiptModal({
   isOpen,
@@ -171,41 +185,42 @@ export default function ReceiptModal({
       commands += `${storeInfo.name || 'STORE'}\n`;
       if (storeInfo.address) commands += `${storeInfo.address}\n`;
       if (storeInfo.phone) commands += `Tel: ${storeInfo.phone}\n`;
-      if (transaction.orderType) commands += `${transaction.orderType}${transaction.tableNumber ? '#' + transaction.tableNumber : ''}\n`;
+      if (storeInfo.taxId) commands += `Tax ID: ${storeInfo.taxId}\n`;
+      if (storeInfo.branch) commands += `Branch: ${storeInfo.branch}\n`;
+      commands += "--------------------------------\n";
+      commands += "ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ\n";
       commands += "--------------------------------\n";
 
       commands += "\x1B\x61\x00"; 
-      commands += `หมายเลขเอกสาร: ${transaction.id}\n`;
-      commands += `เวลาสั่งซื้อ: ${transaction.date}\n`;
+      commands += `No: ${transaction.id}\n`;
+      commands += `Date: ${transaction.date}\n`;
+      if (transaction.customerName) commands += `Customer: ${transaction.customerName}\n`;
+      if (transaction.tableNumber) commands += `Table: ${transaction.tableNumber}\n`;
+      if (transaction.orderType) commands += `Type: ${transaction.orderType}\n`;
       commands += "--------------------------------\n";
-      commands += "ชื่อ          ราคาต่อหน่วย  จำนวน    รวม\n";
+      commands += "ITEM           QTY    TOTAL(THB)\n";
       commands += "--------------------------------\n";
 
-      let totalQty = 0;
       transaction.items.forEach((item) => {
-        totalQty += item.quantity;
         commands += `${item.name}\n`;
-        commands += `              ${item.price.toFixed(2)}     ${item.quantity}   ${item.total.toFixed(2)}\n`;
+        commands += `  ${item.quantity} ${item.unitName} x ${item.price.toFixed(2)} = ${item.total.toFixed(2)}\n`;
       });
       commands += "--------------------------------\n";
 
-      const subtotal = transaction.subtotal || transaction.totalAmount;
-      const vat = transaction.tax || (subtotal * 7 / 107);
-      const exclVat = subtotal - vat;
-
-      commands += `รวม                        ${totalQty}   ${subtotal.toFixed(2)}\n`;
-      commands += `จำนวนเงินที่ไม่รวมภาษี               ${exclVat.toFixed(2)}\n`;
-      commands += `VAT(7.00%)                          ${vat.toFixed(2)}\n`;
-      commands += `ต้องเก็บ                            ${subtotal.toFixed(2)}\n`;
+      commands += `Subtotal: ${(transaction.subtotal || transaction.totalAmount).toFixed(2)}\n`;
+      if (transaction.discount > 0) {
+        commands += `Discount: -${transaction.discount.toFixed(2)}\n`;
+      }
+      commands += `TOTAL: ${transaction.totalAmount.toFixed(2)} THB\n`;
+      commands += `Payment: ${transaction.paymentMethod}\n`;
+      commands += `Received: ${transaction.receivedAmount.toFixed(2)}\n`;
+      if (transaction.paymentMethod === "CASH") {
+        commands += `Change: ${transaction.changeAmount.toFixed(2)}\n`;
+      }
       commands += "--------------------------------\n";
 
-      const paymentText = transaction.paymentMethod === "CASH" ? "เงินสด" : transaction.paymentMethod === "PROMPTPAY" ? "PromptPay" : "เงินเชื่อ";
-      commands += `1.${paymentText}                           ${subtotal.toFixed(2)}\n`;
-      commands += "--------------------------------\n";
-      if (transaction.cashierName) commands += `พนักงานรับเงิน: ${transaction.cashierName}\n`;
-      if (storeInfo.address) commands += `ที่อยู่: ${storeInfo.address}\n`;
-      if (storeInfo.phone) commands += `โทรศัพท์: ${storeInfo.phone}\n`;
-      commands += `เวลา: ${new Date().toLocaleString('th-TH')}\n\n\n`;
+      commands += "\x1B\x61\x01"; 
+      commands += "THANK YOU\n\n\n";
 
       if (transaction.paymentMethod === "CASH") {
         commands += "\x1B\x70\x00\x19\xFA";
@@ -228,19 +243,44 @@ export default function ReceiptModal({
     }
   };
 
-  const getPaymentMethodName = (method: string) => {
+  const getPaymentMethodText = (method: string) => {
     switch (method) {
       case "CASH": return "เงินสด";
-      case "PROMPTPAY": return "PromptPay";
+      case "PROMPTPAY": return "พร้อมเพย์";
       case "CREDIT": return "เงินเชื่อ";
       default: return method;
     }
   };
 
-  const subtotal = transaction.subtotal || transaction.totalAmount;
-  const vat = transaction.tax || (subtotal * 7 / 107);
-  const exclVat = subtotal - vat;
-  const totalQty = transaction.items.reduce((sum, item) => sum + item.quantity, 0);
+  const renderRealBarcode = (text: string) => {
+    const sanitized = '*' + (text || 'TX-000000').toUpperCase().replace(/[^A-Z0-9\-\. \$\/\+\%]/g, '') + '*';
+    let x = 10;
+    const rects = [];
+    const barWidth = 1.2;
+    const wideMultiplier = 2.5;
+
+    for (let i = 0; i < sanitized.length; i++) {
+      const char = sanitized[i];
+      const pattern = CODE_39_MAP[char] || CODE_39_MAP['*'];
+      for (let j = 0; j < pattern.length; j++) {
+        const isBar = j % 2 === 0;
+        const isWide = pattern[j] === 'w';
+        const currentWidth = isWide ? barWidth * wideMultiplier : barWidth;
+        if (isBar) {
+          rects.push(<rect key={`${i}-${j}`} x={x} y="0" width={currentWidth} height="30" fill="black" />);
+        }
+        x += currentWidth;
+      }
+      x += barWidth;
+    }
+    const totalWidth = x + 10;
+
+    return (
+      <svg width={totalWidth} height="30" viewBox={`0 0 ${totalWidth} 30`} fill="none" xmlns="http://www.w3.org/2000/svg" className="max-w-full h-auto">
+        {rects}
+      </svg>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:p-0 print:bg-transparent print:static print:block">
@@ -258,112 +298,116 @@ export default function ReceiptModal({
         <div className="p-4 overflow-y-auto flex-1 flex justify-center bg-slate-50 print:bg-white print:p-0">
           <div id="receipt-content" className="w-[300px] bg-white text-black font-mono text-[11px] p-4 border border-slate-200 shadow-sm print:border-none print:shadow-none print:p-0">
             
-            {/* Store Header & Logo */}
-            <div className="text-center space-y-1 mb-2">
-              {storeInfo.logoUrl ? (
-                <div className="flex justify-center mb-1">
-                  <img src={storeInfo.logoUrl} alt="Logo" className="h-12 max-w-[120px] object-contain" />
-                </div>
-              ) : (
-                <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center mx-auto text-white font-bold text-lg mb-1">
-                  {storeInfo.name ? storeInfo.name.charAt(0) : 'S'}
-                </div>
-              )}
-              <div className="font-bold text-sm uppercase tracking-wide">{storeInfo.name}</div>
-              {storeInfo.website && <div className="text-[9px] text-slate-600">{storeInfo.website}</div>}
+            {/* Store Details */}
+            <div className="text-center space-y-0.5 mb-3">
+              <div className="font-bold text-xs uppercase">{storeInfo.name}</div>
+              {storeInfo.address && <div className="text-[10px]">{storeInfo.address}</div>}
+              <div className="text-[10px]">
+                {storeInfo.taxId && <span>Tax ID: {storeInfo.taxId} </span>}
+                {storeInfo.branch && <span>({storeInfo.branch})</span>}
+              </div>
+              {storeInfo.phone && <div className="text-[10px]">Tel: {storeInfo.phone}</div>}
             </div>
 
-            {/* Order Type / Table Number Highlight */}
-            {(transaction.orderType || transaction.tableNumber) && (
-              <div className="text-center font-bold text-sm my-2 pb-2 border-b border-dashed border-black">
-                {transaction.orderType || 'ทานในร้าน'}{transaction.tableNumber ? `#${transaction.tableNumber}` : ''}
-              </div>
-            )}
+            <div className="text-center border-b border-dashed border-black pb-2 mb-2 text-[10px] font-bold">
+              ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ
+            </div>
 
-            {/* Document Info */}
+            {/* Transaction Meta */}
             <div className="space-y-0.5 text-[10px] pb-2 border-b border-dashed border-black mb-2">
               <div className="flex justify-between">
-                <span>หมายเลขเอกสาร:</span>
-                <span className="font-semibold">{transaction.id}</span>
+                <span>เลขที่:</span>
+                <span>{transaction.id}</span>
               </div>
               <div className="flex justify-between">
-                <span>เวลาสั่งซื้อ:</span>
+                <span>วันที่:</span>
                 <span>{transaction.date}</span>
               </div>
+              {transaction.customerName && (
+                <div className="flex justify-between">
+                  <span>ลูกค้า:</span>
+                  <span>{transaction.customerName}</span>
+                </div>
+              )}
+              {transaction.tableNumber && (
+                <div className="flex justify-between">
+                  <span>โต๊ะ:</span>
+                  <span>{transaction.tableNumber}</span>
+                </div>
+              )}
+              {transaction.orderType && (
+                <div className="flex justify-between">
+                  <span>ประเภท:</span>
+                  <span>{transaction.orderType}</span>
+                </div>
+              )}
             </div>
 
-            {/* Table Header */}
-            <div className="flex justify-between pb-1 mb-1 border-b border-black text-[10px] font-bold">
-              <span className="w-[40%]">ชื่อ</span>
-              <span className="w-[25%] text-right">ราคาต่อหน่วย</span>
-              <span className="w-[15%] text-right">จำนวน</span>
-              <span className="w-[20%] text-right">รวม</span>
+            {/* Items Header */}
+            <div className="border-b border-black pb-1 mb-1 flex justify-between text-[10px] font-bold">
+              <span>รายการ</span>
+              <span>จำนวน / ราคา</span>
             </div>
 
             {/* Items List */}
             <div className="space-y-1.5 pb-2 border-b border-dashed border-black mb-2">
               {transaction.items.map((item) => (
                 <div key={item.cartItemId} className="text-[10px]">
-                  <div className="font-medium truncate">{item.name}</div>
-                  <div className="flex justify-between text-[10px] text-slate-700">
-                    <span className="w-[40%]"></span>
-                    <span className="w-[25%] text-right">{item.price.toFixed(2)}</span>
-                    <span className="w-[15%] text-right">{item.quantity}</span>
-                    <span className="w-[20%] text-right font-bold">{item.total.toFixed(2)}</span>
+                  <div className="truncate font-semibold">{item.name}</div>
+                  <div className="flex justify-between text-[10px]">
+                    <span>{item.quantity} {item.unitName} x {item.price.toFixed(2)}</span>
+                    <span className="font-bold">{item.total.toFixed(2)}</span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Summary Totals */}
+            {/* Totals Summary */}
             <div className="space-y-1 text-[10px] pb-2 border-b border-dashed border-black mb-2">
               <div className="flex justify-between">
-                <span>รวม</span>
-                <div className="flex space-x-6">
-                  <span>{totalQty}</span>
-                  <span className="font-bold">{subtotal.toFixed(2)}</span>
+                <span>รวมเป็นเงิน</span>
+                <span>{(transaction.subtotal || transaction.totalAmount).toFixed(2)}</span>
+              </div>
+              {transaction.discount > 0 && (
+                <div className="flex justify-between">
+                  <span>ส่วนลด</span>
+                  <span>-{transaction.discount.toFixed(2)}</span>
                 </div>
-              </div>
-              <div className="flex justify-between text-[10px]">
-                <span>จำนวนเงินที่ไม่รวมภาษี</span>
-                <span>{exclVat.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-[10px]">
-                <span>VAT (7.00%)</span>
-                <span>{vat.toFixed(2)}</span>
-              </div>
+              )}
               <div className="flex justify-between font-bold text-xs pt-1 border-t border-black">
-                <span>ต้องเก็บ</span>
-                <span>{subtotal.toFixed(2)}</span>
+                <span>ยอดสุทธิ</span>
+                <span>{transaction.totalAmount.toFixed(2)} THB</span>
               </div>
             </div>
 
-            {/* Payment Method */}
+            {/* Payment Details */}
             <div className="space-y-1 text-[10px] pb-2 border-b border-dashed border-black mb-3">
-              <div className="flex justify-between font-medium">
-                <span>1.{getPaymentMethodName(transaction.paymentMethod)}</span>
-                <span>{subtotal.toFixed(2)}</span>
+              <div className="flex justify-between">
+                <span>วิธีชำระ:</span>
+                <span>{getPaymentMethodText(transaction.paymentMethod)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>รับเงินมา:</span>
+                <span>{transaction.receivedAmount.toFixed(2)}</span>
               </div>
               {transaction.paymentMethod === "CASH" && (
-                <>
-                  <div className="flex justify-between text-[10px]">
-                    <span>รับเงินมา:</span>
-                    <span>{transaction.receivedAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span>เงินทอน:</span>
-                    <span>{transaction.changeAmount.toFixed(2)}</span>
-                  </div>
-                </>
+                <div className="flex justify-between font-bold">
+                  <span>เงินทอน:</span>
+                  <span>{transaction.changeAmount.toFixed(2)}</span>
+                </div>
               )}
             </div>
 
-            {/* Footer Meta */}
-            <div className="space-y-0.5 text-[9px] text-slate-700">
-              {transaction.cashierName && <div>พนักงานรับเงิน: {transaction.cashierName}</div>}
-              {storeInfo.address && <div>ที่อยู่: {storeInfo.address}</div>}
-              {storeInfo.phone && <div>โทรศัพท์: {storeInfo.phone}</div>}
-              <div>เวลา: {new Date().toLocaleString('th-TH')}</div>
+            {/* Barcode & Footer */}
+            <div className="text-center space-y-2">
+              <div className="text-[10px] font-bold">*** ขอบคุณที่ใช้บริการ ***</div>
+              <div className="flex flex-col items-center justify-center my-1">
+                {renderRealBarcode(transaction.id)}
+                <span className="text-[9px] mt-0.5">*{transaction.id}*</span>
+              </div>
+              <div className="text-[8px] text-slate-500 pt-1">
+                Powered by Promptbit POS
+              </div>
             </div>
 
           </div>
